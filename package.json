@@ -1,0 +1,19 @@
+{
+  "name": "web-terminal-host",
+  "version": "1.0.0",
+  "description": "Web-based terminal like Termux with user authentication",
+  "main": "server.js",
+  "scripts": {
+    "start": "node server.js"
+  },
+  "dependencies": {
+    "express": "^4.18.2",
+    "node-pty": "^0.10.1",
+    "ws": "^8.14.2",
+    "bcrypt": "^5.1.1",
+    "express-session": "^1.17.3",
+    "body-parser": "^1.20.2",
+    "fs-extra": "^11.1.1",
+    "mkdirp": "^3.0.1"
+  }
+}
