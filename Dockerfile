@@ -1,8 +1,3 @@
-# Xóa file Dockerfile cũ (nếu có)
-rm Dockerfile
-
-# Tạo file Dockerfile mới với nội dung chuẩn
-cat > Dockerfile << 'EOF'
 FROM node:18-bullseye
 
 RUN apt-get update && apt-get install -y \
@@ -31,4 +26,3 @@ RUN mkdir -p /app/data && chmod 777 /app/data
 EXPOSE 3000
 
 CMD ["node", "server.js"]
-EOF
