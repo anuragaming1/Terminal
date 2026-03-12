@@ -4,130 +4,481 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Đăng ký - Web Terminal</title>
-    <link rel="stylesheet" href="style.css">
+    
+    <!-- Cache control -->
+    <meta http-equiv="Cache-Control" content="no-cache, no-store, must-revalidate">
+    <meta http-equiv="Pragma" content="no-cache">
+    <meta http-equiv="Expires" content="0">
+    
     <style>
-        .auth-container {
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+        
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Oxygen, Ubuntu, sans-serif;
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            min-height: 100vh;
             display: flex;
             justify-content: center;
             align-items: center;
-            min-height: 100vh;
-            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            margin: 0;
+            padding: 20px;
         }
+        
+        .auth-container {
+            width: 100%;
+            max-width: 400px;
+        }
+        
         .auth-box {
             background: white;
             padding: 40px;
             border-radius: 10px;
             box-shadow: 0 10px 25px rgba(0,0,0,0.1);
-            width: 100%;
-            max-width: 400px;
         }
-        .auth-box h2 {
+        
+        .terminal-icon {
             text-align: center;
-            margin-bottom: 30px;
-            color: #333;
+            margin-bottom: 20px;
         }
+        
+        .terminal-icon .icon {
+            font-size: 48px;
+            color: #333;
+            background: #f0f0f0;
+            width: 80px;
+            height: 80px;
+            line-height: 80px;
+            border-radius: 50%;
+            margin: 0 auto;
+            box-shadow: 0 5px 15px rgba(0,0,0,0.1);
+        }
+        
+        h1 {
+            text-align: center;
+            color: #333;
+            margin-bottom: 10px;
+            font-size: 28px;
+        }
+        
+        .subtitle {
+            text-align: center;
+            color: #666;
+            margin-bottom: 30px;
+            font-size: 14px;
+        }
+        
         .form-group {
             margin-bottom: 20px;
         }
+        
         .form-group label {
             display: block;
-            margin-bottom: 5px;
+            margin-bottom: 8px;
             color: #555;
             font-weight: 500;
+            font-size: 14px;
         }
+        
         .form-group input {
             width: 100%;
-            padding: 10px;
-            border: 1px solid #ddd;
-            border-radius: 5px;
+            padding: 12px 15px;
+            border: 2px solid #e0e0e0;
+            border-radius: 8px;
             font-size: 16px;
-            transition: border-color 0.3s;
-        }
-        .form-group input:focus {
+            transition: all 0.3s ease;
             outline: none;
+        }
+        
+        .form-group input:focus {
             border-color: #667eea;
+            box-shadow: 0 0 0 3px rgba(102, 126, 234, 0.1);
         }
-        .btn {
-            width: 100%;
-            padding: 12px;
-            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
-            color: white;
-            border: none;
-            border-radius: 5px;
-            font-size: 16px;
-            font-weight: 600;
-            cursor: pointer;
-            transition: opacity 0.3s;
+        
+        .form-group input.error {
+            border-color: #e74c3c;
         }
-        .btn:hover {
-            opacity: 0.9;
-        }
-        .auth-links {
-            text-align: center;
-            margin-top: 20px;
-        }
-        .auth-links a {
-            color: #667eea;
-            text-decoration: none;
-        }
-        .auth-links a:hover {
-            text-decoration: underline;
-        }
-        .error-message {
-            color: #e74c3c;
-            text-align: center;
-            margin-top: 10px;
-            font-size: 14px;
-        }
-        .success-message {
-            color: #27ae60;
-            text-align: center;
-            margin-top: 10px;
-            font-size: 14px;
-        }
-        .requirements {
+        
+        .form-group .hint {
             font-size: 12px;
             color: #666;
             margin-top: 5px;
+        }
+        
+        .btn {
+            width: 100%;
+            padding: 14px;
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            color: white;
+            border: none;
+            border-radius: 8px;
+            font-size: 16px;
+            font-weight: 600;
+            cursor: pointer;
+            transition: all 0.3s ease;
+            margin-top: 10px;
+        }
+        
+        .btn:hover {
+            transform: translateY(-2px);
+            box-shadow: 0 5px 15px rgba(102, 126, 234, 0.4);
+        }
+        
+        .btn:disabled {
+            opacity: 0.6;
+            cursor: not-allowed;
+            transform: none;
+        }
+        
+        .auth-links {
+            text-align: center;
+            margin-top: 25px;
+        }
+        
+        .auth-links a {
+            color: #667eea;
+            text-decoration: none;
+            font-size: 14px;
+            font-weight: 500;
+            transition: color 0.3s;
+        }
+        
+        .auth-links a:hover {
+            color: #764ba2;
+            text-decoration: underline;
+        }
+        
+        .message {
+            margin-top: 20px;
+            padding: 12px;
+            border-radius: 8px;
+            text-align: center;
+            font-size: 14px;
+            display: none;
+        }
+        
+        .message.error {
+            display: block;
+            background: #fde8e8;
+            color: #e74c3c;
+            border: 1px solid #fad1d1;
+        }
+        
+        .message.success {
+            display: block;
+            background: #e8f5e9;
+            color: #27ae60;
+            border: 1px solid #c8e6c9;
+        }
+        
+        .message.info {
+            display: block;
+            background: #e3f2fd;
+            color: #1976d2;
+            border: 1px solid #bbdefb;
+        }
+        
+        .loading-spinner {
+            display: inline-block;
+            width: 16px;
+            height: 16px;
+            border: 2px solid #ffffff;
+            border-radius: 50%;
+            border-top-color: transparent;
+            animation: spin 1s linear infinite;
+            margin-right: 8px;
+            vertical-align: middle;
+        }
+        
+        @keyframes spin {
+            to { transform: rotate(360deg); }
+        }
+        
+        .footer {
+            text-align: center;
+            margin-top: 20px;
+            color: rgba(255,255,255,0.8);
+            font-size: 12px;
+        }
+        
+        .footer a {
+            color: white;
+            text-decoration: none;
+        }
+        
+        .footer a:hover {
+            text-decoration: underline;
+        }
+        
+        .password-strength {
+            margin-top: 5px;
+            height: 4px;
+            background: #e0e0e0;
+            border-radius: 2px;
+            overflow: hidden;
+        }
+        
+        .password-strength-bar {
+            height: 100%;
+            width: 0%;
+            transition: width 0.3s, background-color 0.3s;
+        }
+        
+        .password-strength-bar.weak {
+            background: #e74c3c;
+            width: 33.33%;
+        }
+        
+        .password-strength-bar.medium {
+            background: #f39c12;
+            width: 66.66%;
+        }
+        
+        .password-strength-bar.strong {
+            background: #27ae60;
+            width: 100%;
+        }
+        
+        @media (max-width: 480px) {
+            .auth-box {
+                padding: 30px 20px;
+            }
+            
+            h1 {
+                font-size: 24px;
+            }
+            
+            .terminal-icon .icon {
+                width: 60px;
+                height: 60px;
+                line-height: 60px;
+                font-size: 36px;
+            }
         }
     </style>
 </head>
 <body>
     <div class="auth-container">
         <div class="auth-box">
-            <h2>Đăng ký tài khoản</h2>
+            <div class="terminal-icon">
+                <div class="icon">⚡</div>
+            </div>
             
-            <form id="registerForm">
+            <h1>Web Terminal</h1>
+            <div class="subtitle">Đăng ký tài khoản mới</div>
+            
+            <form id="registerForm" autocomplete="off">
                 <div class="form-group">
                     <label for="username">Tên đăng nhập</label>
-                    <input type="text" id="username" name="username" required 
-                           placeholder="Từ 3-20 ký tự" autocomplete="username">
-                    <div class="requirements">Chỉ gồm chữ cái, số, dấu gạch dưới</div>
+                    <input 
+                        type="text" 
+                        id="username" 
+                        name="username" 
+                        required 
+                        placeholder="Từ 3-20 ký tự"
+                        autocomplete="off"
+                        spellcheck="false"
+                        pattern="[a-zA-Z0-9_]{3,20}"
+                        maxlength="20"
+                    >
+                    <div class="hint">Chỉ gồm chữ cái, số và dấu gạch dưới (3-20 ký tự)</div>
                 </div>
                 
                 <div class="form-group">
                     <label for="password">Mật khẩu</label>
-                    <input type="password" id="password" name="password" required 
-                           placeholder="Ít nhất 6 ký tự" autocomplete="new-password">
+                    <input 
+                        type="password" 
+                        id="password" 
+                        name="password" 
+                        required 
+                        placeholder="Ít nhất 6 ký tự"
+                        autocomplete="off"
+                        minlength="6"
+                    >
+                    <div class="password-strength">
+                        <div class="password-strength-bar" id="passwordStrength"></div>
+                    </div>
+                    <div class="hint">Ít nhất 6 ký tự</div>
                 </div>
                 
                 <div class="form-group">
                     <label for="confirmPassword">Xác nhận mật khẩu</label>
-                    <input type="password" id="confirmPassword" name="confirmPassword" required 
-                           placeholder="Nhập lại mật khẩu" autocomplete="new-password">
+                    <input 
+                        type="password" 
+                        id="confirmPassword" 
+                        name="confirmPassword" 
+                        required 
+                        placeholder="Nhập lại mật khẩu"
+                        autocomplete="off"
+                        minlength="6"
+                    >
                 </div>
                 
-                <button type="submit" class="btn">Đăng ký</button>
+                <button type="submit" class="btn" id="registerBtn">
+                    <span class="btn-text">Đăng ký</span>
+                </button>
                 
                 <div class="auth-links">
                     <a href="login.html">Đã có tài khoản? Đăng nhập</a>
                 </div>
                 
-                <div id="message" class="error-message"></div>
+                <div id="message" class="message"></div>
             </form>
+        </div>
+        
+        <div class="footer">
+            <p>© 2026 Web Terminal - <a href="/">Trang chủ</a></p>
         </div>
     </div>
     
-    <script src="auth.js"></script>
+    <script>
+        document.addEventListener('DOMContentLoaded', function() {
+            checkSession();
+            setupRegisterForm();
+            setupPasswordStrength();
+        });
+        
+        async function checkSession() {
+            try {
+                const response = await fetch('/api/session');
+                const data = await response.json();
+                
+                if (data.authenticated) {
+                    console.log('✅ Đã đăng nhập, chuyển hướng...');
+                    window.location.href = '/';
+                }
+            } catch (err) {
+                console.error('❌ Lỗi kiểm tra session:', err);
+            }
+        }
+        
+        function setupRegisterForm() {
+            const registerForm = document.getElementById('registerForm');
+            const usernameInput = document.getElementById('username');
+            const passwordInput = document.getElementById('password');
+            const confirmInput = document.getElementById('confirmPassword');
+            const registerBtn = document.getElementById('registerBtn');
+            const messageDiv = document.getElementById('message');
+            
+            // Xóa thông báo cũ
+            [usernameInput, passwordInput, confirmInput].forEach(input => {
+                input.addEventListener('focus', () => {
+                    messageDiv.className = 'message';
+                    messageDiv.textContent = '';
+                    input.classList.remove('error');
+                });
+            });
+            
+            registerForm.addEventListener('submit', async (e) => {
+                e.preventDefault();
+                
+                const username = usernameInput.value.trim();
+                const password = passwordInput.value;
+                const confirmPassword = confirmInput.value;
+                
+                // Validate username
+                const usernameRegex = /^[a-zA-Z0-9_]{3,20}$/;
+                if (!usernameRegex.test(username)) {
+                    showMessage('Tên đăng nhập không hợp lệ (3-20 ký tự, chỉ chữ, số, _)', 'error');
+                    usernameInput.classList.add('error');
+                    usernameInput.focus();
+                    return;
+                }
+                
+                // Validate password
+                if (password.length < 6) {
+                    showMessage('Mật khẩu phải có ít nhất 6 ký tự', 'error');
+                    passwordInput.classList.add('error');
+                    passwordInput.focus();
+                    return;
+                }
+                
+                // Validate confirm password
+                if (password !== confirmPassword) {
+                    showMessage('Mật khẩu xác nhận không khớp', 'error');
+                    confirmInput.classList.add('error');
+                    confirmInput.focus();
+                    return;
+                }
+                
+                // Disable form
+                registerBtn.disabled = true;
+                registerBtn.innerHTML = '<span class="loading-spinner"></span> Đang xử lý...';
+                
+                try {
+                    console.log('📤 Gửi request đăng ký...');
+                    
+                    const response = await fetch('/api/register', {
+                        method: 'POST',
+                        headers: {
+                            'Content-Type': 'application/json'
+                        },
+                        body: JSON.stringify({ username, password })
+                    });
+                    
+                    const data = await response.json();
+                    
+                    if (data.success) {
+                        console.log('✅ Đăng ký thành công');
+                        showMessage('Đăng ký thành công! Đang chuyển hướng...', 'success');
+                        
+                        setTimeout(() => {
+                            window.location.href = '/login.html';
+                        }, 2000);
+                    } else {
+                        console.log('❌ Đăng ký thất bại:', data.error);
+                        showMessage(data.error || 'Đăng ký thất bại', 'error');
+                        
+                        registerBtn.disabled = false;
+                        registerBtn.innerHTML = '<span class="btn-text">Đăng ký</span>';
+                    }
+                    
+                } catch (err) {
+                    console.error('❌ Lỗi kết nối:', err);
+                    showMessage('Không thể kết nối đến server. Vui lòng thử lại sau.', 'error');
+                    
+                    registerBtn.disabled = false;
+                    registerBtn.innerHTML = '<span class="btn-text">Đăng ký</span>';
+                }
+            });
+        }
+        
+        function setupPasswordStrength() {
+            const passwordInput = document.getElementById('password');
+            const strengthBar = document.getElementById('passwordStrength');
+            
+            passwordInput.addEventListener('input', function() {
+                const password = this.value;
+                let strength = 0;
+                
+                if (password.length >= 6) strength += 1;
+                if (password.match(/[a-z]/)) strength += 1;
+                if (password.match(/[A-Z]/)) strength += 1;
+                if (password.match(/[0-9]/)) strength += 1;
+                if (password.match(/[^a-zA-Z0-9]/)) strength += 1;
+                
+                strengthBar.className = 'password-strength-bar';
+                
+                if (password.length === 0) {
+                    strengthBar.style.width = '0%';
+                } else if (strength <= 2) {
+                    strengthBar.classList.add('weak');
+                } else if (strength <= 3) {
+                    strengthBar.classList.add('medium');
+                } else {
+                    strengthBar.classList.add('strong');
+                }
+            });
+        }
+        
+        function showMessage(text, type) {
+            const messageDiv = document.getElementById('message');
+            messageDiv.className = `message ${type}`;
+            messageDiv.textContent = text;
+        }
+    </script>
 </body>
 </html>
