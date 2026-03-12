@@ -12,9 +12,9 @@ const fs = require('fs-extra');
 const app = express();
 const server = http.createServer(app);
 
-// Cấu hình WebSocket cho Render
+// QUAN TRỌNG: Tạo WebSocket server với `noServer` option
 const wss = new WebSocket.Server({ 
-    server,
+    noServer: true,  // Quan trọng: không tự động upgrade
     perMessageDeflate: false,
     clientTracking: true
 });
@@ -31,7 +31,8 @@ app.use(session({
     saveUninitialized: false,
     cookie: { 
         secure: false,
-        maxAge: 24 * 60 * 60 * 1000
+        maxAge: 24 * 60 * 60 * 1000,
+        sameSite: 'lax'
     }
 }));
 
@@ -174,58 +175,97 @@ app.post('/api/logout', (req, res) => {
     res.json({ success: true });
 });
 
-// API Debug files
-app.get('/debug/files', requireAuth, (req, res) => {
-    const publicPath = path.join(__dirname, 'public');
-    try {
-        const files = fs.readdirSync(publicPath);
-        res.json({
-            publicExists: fs.existsSync(publicPath),
-            files: files,
-            cwd: process.cwd(),
-            dirname: __dirname
-        });
-    } catch (err) {
-        res.json({ error: err.message });
-    }
-});
-
 // Lưu trữ terminal sessions
 const userTerminals = new Map();
 
+// QUAN TRỌNG: Xử lý upgrade request đúng cách
+server.on('upgrade', function upgrade(request, socket, head) {
+    console.log('📡 WebSocket upgrade request received');
+    
+    // Kiểm tra nếu socket đã được xử lý
+    if (socket.wsHandleUsed) {
+        console.log('⚠️ Socket already handled, skipping');
+        return;
+    }
+    
+    // Đánh dấu socket đã được xử lý
+    socket.wsHandleUsed = true;
+    
+    // Xử lý upgrade
+    wss.handleUpgrade(request, socket, head, function done(ws) {
+        console.log('✅ WebSocket upgrade successful');
+        wss.emit('connection', ws, request);
+    });
+});
+
 // Xử lý WebSocket connection
 wss.on('connection', (ws, req) => {
-    console.log('🔌 WebSocket connected from:', req.socket.remoteAddress);
+    const clientIp = req.socket.remoteAddress;
+    console.log(`🔌 WebSocket connected from: ${clientIp}`);
     
     let currentUser = null;
     let currentPty = null;
     let pingInterval = null;
+    let isAlive = true;
     
     // Ping để giữ kết nối
     pingInterval = setInterval(() => {
+        if (!isAlive) {
+            console.log('💀 Client không phản hồi, đóng kết nối');
+            return ws.terminate();
+        }
+        
+        isAlive = false;
         if (ws.readyState === WebSocket.OPEN) {
             ws.send(JSON.stringify({ type: 'ping' }));
         }
     }, 30000);
     
+    ws.on('pong', () => {
+        isAlive = true;
+    });
+    
     ws.on('message', async (message) => {
         try {
-            const data = JSON.parse(message);
+            // Kiểm tra nếu là binary message
+            if (Buffer.isBuffer(message)) {
+                message = message.toString();
+            }
             
-            // Xử lý ping từ client
+            // Thử parse JSON
+            let data;
+            try {
+                data = JSON.parse(message);
+            } catch (e) {
+                // Không phải JSON, gửi vào PTY nếu đã xác thực
+                if (currentPty) {
+                    currentPty.write(message);
+                }
+                return;
+            }
+            
+            // Xử lý pong từ client
             if (data.type === 'pong') {
+                isAlive = true;
                 return;
             }
             
             // Xác thực user
             if (data.type === 'auth') {
                 currentUser = data.username;
-                console.log('👤 User authenticated:', currentUser);
+                console.log(`👤 User authenticated: ${currentUser} from ${clientIp}`);
                 
                 // Tạo workspace cho user
                 const userDir = createUserWorkspace(currentUser);
                 
-                // Khởi tạo PTY
+                // Kill PTY cũ nếu có
+                if (currentPty) {
+                    try {
+                        currentPty.kill();
+                    } catch (e) {}
+                }
+                
+                // Khởi tạo PTY mới
                 const shell = os.platform() === 'win32' ? 'powershell.exe' : 'bash';
                 currentPty = pty.spawn(shell, [], {
                     name: 'xterm-color',
@@ -254,17 +294,19 @@ wss.on('connection', (ws, req) => {
                     }
                 });
                 
-                // Gửi thông báo chào mừng
-                ws.write = function(data) {
-                    if (ws.readyState === WebSocket.OPEN) {
-                        ws.send(data);
-                    }
-                };
+                // Xử lý lỗi PTY
+                currentPty.on('error', (err) => {
+                    console.error(`❌ PTY error for ${currentUser}:`, err);
+                });
                 
-                currentPty.write('\r\n');
-                ws.send(`\r\n\x1b[32m=== Chào mừng ${currentUser} đến Web Terminal ===\x1b[0m\r\n`);
-                ws.send(`\x1b[33mWorkspace: ${userDir}\x1b[0m\r\n`);
-                ws.send(`\x1b[36mGõ 'help' để xem hướng dẫn\x1b[0m\r\n\n`);
+                // Gửi thông báo chào mừng
+                setTimeout(() => {
+                    if (ws.readyState === WebSocket.OPEN) {
+                        ws.send(`\r\n\x1b[32m=== Chào mừng ${currentUser} đến Web Terminal ===\x1b[0m\r\n`);
+                        ws.send(`\x1b[33mWorkspace: ${userDir}\x1b[0m\r\n`);
+                        ws.send(`\x1b[36mGõ 'help' để xem hướng dẫn\x1b[0m\r\n\n`);
+                    }
+                }, 100);
                 
                 return;
             }
@@ -275,11 +317,8 @@ wss.on('connection', (ws, req) => {
                 return;
             }
             
-        } catch (e) {
-            // Nếu không phải JSON, gửi thẳng vào PTY
-            if (currentPty) {
-                currentPty.write(message.toString());
-            }
+        } catch (err) {
+            console.error('❌ WebSocket message error:', err);
         }
     });
     
@@ -288,35 +327,38 @@ wss.on('connection', (ws, req) => {
     });
     
     ws.on('close', (code, reason) => {
-        console.log('🔌 WebSocket closed:', code, reason.toString());
+        console.log(`🔌 WebSocket closed: ${code} ${reason.toString()}`);
         clearInterval(pingInterval);
         
-        // Cleanup PTY sau 5 phút
+        // Cleanup PTY
         if (currentUser && currentPty) {
-            setTimeout(() => {
-                const userSessions = userTerminals.get(currentUser);
-                if (userSessions) {
-                    for (const [sid, pty] of userSessions) {
-                        if (pty === currentPty) {
-                            pty.kill();
-                            userSessions.delete(sid);
-                            break;
-                        }
-                    }
-                    if (userSessions.size === 0) {
-                        userTerminals.delete(currentUser);
+            try {
+                currentPty.kill();
+            } catch (e) {}
+            
+            const userSessions = userTerminals.get(currentUser);
+            if (userSessions) {
+                for (const [sid, pty] of userSessions) {
+                    if (pty === currentPty) {
+                        userSessions.delete(sid);
+                        break;
                     }
                 }
-            }, 5 * 60 * 1000);
+                if (userSessions.size === 0) {
+                    userTerminals.delete(currentUser);
+                }
+            }
         }
     });
 });
 
-// Xử lý upgrade request
-server.on('upgrade', (request, socket, head) => {
-    console.log('📡 WebSocket upgrade request');
-    wss.handleUpgrade(request, socket, head, (ws) => {
-        wss.emit('connection', ws, request);
+// API để kiểm tra WebSocket status
+app.get('/api/ws-status', (req, res) => {
+    res.json({
+        totalClients: wss.clients.size,
+        clients: Array.from(wss.clients).map(c => ({
+            readyState: c.readyState
+        }))
     });
 });
 
@@ -324,4 +366,5 @@ const PORT = process.env.PORT || 3000;
 server.listen(PORT, '0.0.0.0', () => {
     console.log(`🚀 Server running on port ${PORT}`);
     console.log(`📁 Data directory: ${DATA_DIR}`);
+    console.log(`🌐 WebSocket server ready (noServer mode)`);
 });
