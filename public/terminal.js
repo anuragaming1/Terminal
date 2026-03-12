@@ -1,369 +1,483 @@
+// Global variables
+let sessions = new Map();
+let activeSessionId = null;
+let currentUsername = null;
+let ws = null;
+let reconnectAttempts = 0;
+let sessionToken = null;
+
+// Log system - LƯU VĨNH VIỄN
+let logData = [];
+
+// Load logs từ localStorage khi khởi động
+try {
+    const savedLogs = localStorage.getItem('terminalLogs_v2');
+    if (savedLogs) {
+        logData = JSON.parse(savedLogs);
+    } else {
+        const oldLogs = localStorage.getItem('terminalLogs');
+        if (oldLogs) {
+            logData = JSON.parse(oldLogs);
+        }
+    }
+} catch (e) {
+    console.log('No saved logs');
+}
+
+// Tạo session token khi load trang
+sessionToken = localStorage.getItem('sessionToken');
+if (!sessionToken) {
+    sessionToken = 'session_' + Date.now() + '_' + Math.random().toString(36).substring(7);
+    localStorage.setItem('sessionToken', sessionToken);
+}
+
 document.addEventListener('DOMContentLoaded', async function() {
-    console.log('🖥️ Terminal page loaded');
+    console.log('🖥️ Terminal loaded');
     
-    // Hiển thị terminal container ngay lập tức
-    const loadingEl = document.getElementById('loading');
-    const terminalEl = document.getElementById('terminal-container');
-    const virtualKeys = document.getElementById('virtualKeys');
+    // Hiện UI ngay lập tức
+    document.getElementById('loading').style.display = 'none';
+    document.getElementById('tabBar').style.display = 'flex';
+    document.getElementById('userSection').style.display = 'flex';
+    document.getElementById('terminalWrapper').style.display = 'block';
     
-    if (loadingEl) loadingEl.style.display = 'none';
-    if (terminalEl) terminalEl.style.display = 'block';
-    
-    // Hiện nút ảo nếu là mobile
-    if (window.innerWidth <= 768) {
-        if (virtualKeys) virtualKeys.style.display = 'block';
-    }
-    
-    // Khởi tạo terminal với font size lớn hơn cho mobile
-    const term = new Terminal({
-        cursorBlink: true,
-        theme: {
-            background: '#000000',
-            foreground: '#00ff00',
-            cursor: '#00ff00',
-            black: '#000000',
-            red: '#cd0000',
-            green: '#00cd00',
-            yellow: '#cdcd00',
-            blue: '#0000cd',
-            magenta: '#cd00cd',
-            cyan: '#00cdcd',
-            white: '#ffffff'
-        },
-        fontFamily: 'Menlo, Monaco, "Courier New", monospace',
-        fontSize: window.innerWidth <= 768 ? 12 : 14, // Font nhỏ hơn trên mobile
-        scrollback: 5000,
-        allowTransparency: true
-    });
-    
-    const fitAddon = new FitAddon.FitAddon();
-    term.loadAddon(fitAddon);
-    
-    try {
-        term.open(terminalEl);
-        setTimeout(() => {
-            try {
-                fitAddon.fit();
-            } catch (e) {}
-        }, 100);
-    } catch (err) {
-        console.error('❌ Cannot open terminal:', err);
-    }
+    // Setup virtual keys TRƯỚC
+    setupVirtualKeys();
     
     // Kiểm tra session
     try {
-        console.log('🔍 Checking session...');
         const sessionResponse = await fetch('/api/session');
         const sessionData = await sessionResponse.json();
         
         if (!sessionData.authenticated) {
-            console.log('🚫 Not authenticated, redirecting to login');
             window.location.href = '/login.html';
             return;
         }
         
-        const username = sessionData.username;
-        console.log('✅ Authenticated as:', username);
+        currentUsername = sessionData.username;
+        console.log('✅ User:', currentUsername);
         
-        // Thêm nút logout và user info
-        addUserInfo(username);
-        addLogoutButton();
+        // Update user info
+        document.getElementById('userSection').innerHTML = `
+            <div id="user-info">👤 ${currentUsername}</div>
+            <button id="logout-btn">Đăng xuất</button>
+        `;
+        
+        // Logout handler
+        document.getElementById('logout-btn').onclick = async () => {
+            await fetch('/api/logout', { method: 'POST' });
+            localStorage.removeItem('sessionToken');
+            window.location.href = '/login.html';
+        };
+        
+        // Tạo session đầu tiên
+        createNewSession();
+        
+        // Setup các handlers
+        setupNanoButtons();
+        setupLogPanel();
+        
+        // Hiển thị logs cũ
+        displayLogs();
+        addLog('🟢 Đã đăng nhập thành công');
         
         // Kết nối WebSocket
-        const ws = connectWebSocket(term, username);
-        
-        // Thêm xử lý cho nút ảo
-        setupVirtualKeys(term, ws);
+        connectWebSocket();
         
     } catch (err) {
-        console.error('❌ Session check failed:', err);
-        showError('Không thể kết nối đến server. Vui lòng tải lại trang.');
+        console.error('Session error:', err);
+        showError('Không thể kết nối server');
     }
-    
-    // Xử lý resize với debounce
-    let resizeTimeout;
-    window.addEventListener('resize', () => {
-        clearTimeout(resizeTimeout);
-        resizeTimeout = setTimeout(() => {
-            try {
-                fitAddon.fit();
-                // Ẩn/hiện nút ảo theo kích thước màn hình
-                const virtualKeys = document.getElementById('virtualKeys');
-                if (virtualKeys) {
-                    virtualKeys.style.display = window.innerWidth <= 768 ? 'block' : 'none';
-                }
-            } catch (err) {
-                console.error('Resize error:', err);
-            }
-        }, 100);
-    });
 });
 
-function addUserInfo(username) {
-    const existingInfo = document.getElementById('user-info');
-    if (existingInfo) return;
-    
-    const userInfo = document.createElement('div');
-    userInfo.id = 'user-info';
-    userInfo.textContent = `User: ${username}`;
-    userInfo.style.position = 'fixed';
-    userInfo.style.top = '10px';
-    userInfo.style.left = '10px';
-    userInfo.style.zIndex = '1500';
-    userInfo.style.padding = '5px 10px';
-    userInfo.style.backgroundColor = '#27ae60';
-    userInfo.style.color = 'white';
-    userInfo.style.borderRadius = '4px';
-    userInfo.style.fontSize = '12px';
-    userInfo.style.fontFamily = 'monospace';
-    document.body.appendChild(userInfo);
-}
-
-function addLogoutButton() {
-    const existingBtn = document.getElementById('logout-btn');
-    if (existingBtn) return;
-    
-    const logoutBtn = document.createElement('button');
-    logoutBtn.id = 'logout-btn';
-    logoutBtn.textContent = 'Đăng xuất';
-    logoutBtn.style.position = 'fixed';
-    logoutBtn.style.top = '10px';
-    logoutBtn.style.right = '10px';
-    logoutBtn.style.zIndex = '1500';
-    logoutBtn.style.padding = '5px 10px';
-    logoutBtn.style.backgroundColor = '#e74c3c';
-    logoutBtn.style.color = 'white';
-    logoutBtn.style.border = 'none';
-    logoutBtn.style.borderRadius = '4px';
-    logoutBtn.style.fontSize = '12px';
-    logoutBtn.style.cursor = 'pointer';
-    logoutBtn.style.fontFamily = 'monospace';
-    logoutBtn.onclick = async () => {
-        try {
-            await fetch('/api/logout', { method: 'POST' });
-            window.location.href = '/login.html';
-        } catch (err) {
-            console.error('Logout error:', err);
-        }
-    };
-    document.body.appendChild(logoutBtn);
-}
-
-function connectWebSocket(term, username) {
-    console.log('🔌 Connecting WebSocket...');
-    
+// Kết nối WebSocket với auto-reconnect
+function connectWebSocket() {
     const protocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
     const wsUrl = `${protocol}//${window.location.host}`;
     
-    let reconnectAttempts = 0;
-    const maxReconnectAttempts = 10;
-    let ws = null;
-    let pingInterval = null;
-    let reconnectTimeout = null;
-    
-    function cleanup() {
-        if (pingInterval) {
-            clearInterval(pingInterval);
-            pingInterval = null;
-        }
-        if (reconnectTimeout) {
-            clearTimeout(reconnectTimeout);
-            reconnectTimeout = null;
-        }
-    }
-    
-    function createConnection() {
-        cleanup();
-        
+    function connect() {
         ws = new WebSocket(wsUrl);
-        
-        const connectionTimeout = setTimeout(() => {
-            console.log('⏰ Connection timeout');
-            if (ws) {
-                ws.close();
-                ws = null;
-            }
-        }, 15000);
         
         ws.onopen = () => {
             console.log('✅ WebSocket connected');
-            clearTimeout(connectionTimeout);
             reconnectAttempts = 0;
+            addLog('🟢 Đã kết nối lại server');
             
-            // Gửi thông tin xác thực
+            // Gửi session token để server nhận diện
             ws.send(JSON.stringify({
-                type: 'auth',
-                username: username,
-                cols: term.cols,
-                rows: term.rows
+                type: 'init',
+                username: currentUsername,
+                sessionToken: sessionToken
             }));
             
-            term.write('\r\n\x1b[32m✓ Đã kết nối đến server\x1b[0m\r\n');
-            term.write('\x1b[36m📱 Chế độ điện thoại: Dùng các nút bên dưới\x1b[0m\r\n');
-            
-            pingInterval = setInterval(() => {
-                if (ws && ws.readyState === WebSocket.OPEN) {
-                    ws.send(JSON.stringify({ type: 'ping' }));
-                }
-            }, 25000);
+            // Auth tất cả sessions
+            sessions.forEach((session, id) => {
+                ws.send(JSON.stringify({
+                    type: 'auth',
+                    username: currentUsername,
+                    sessionId: id,
+                    cols: session.term.cols,
+                    rows: session.term.rows
+                }));
+            });
         };
         
         ws.onmessage = (event) => {
             try {
                 const data = JSON.parse(event.data);
-                if (data.type === 'ping') {
-                    ws.send(JSON.stringify({ type: 'pong' }));
-                    return;
+                
+                if (data.type === 'pong') return;
+                
+                if (data.type === 'log') {
+                    addLog(data.message);
+                } 
+                else if (data.type === 'restore') {
+                    if (data.logs) {
+                        logData = data.logs;
+                        displayLogs();
+                    }
+                }
+                else if (data.sessionId && sessions.has(data.sessionId)) {
+                    sessions.get(data.sessionId).term.write(data.data);
                 }
             } catch (e) {
-                term.write(event.data);
+                const activeSession = sessions.get(activeSessionId);
+                if (activeSession) {
+                    activeSession.term.write(event.data);
+                }
             }
+        };
+        
+        ws.onclose = () => {
+            console.log('🔌 WebSocket closed');
+            reconnectAttempts++;
+            
+            const delay = Math.min(1000 * reconnectAttempts, 10000);
+            addLog(`🔴 Mất kết nối, thử lại sau ${delay/1000}s...`);
+            
+            setTimeout(connect, delay);
         };
         
         ws.onerror = (error) => {
-            console.error('❌ WebSocket error:', error);
-            term.write('\r\n\x1b[31m⚠️ Lỗi kết nối WebSocket\x1b[0m\r\n');
+            console.error('WebSocket error:', error);
         };
-        
-        ws.onclose = (event) => {
-            console.log('🔌 WebSocket closed:', event.code);
-            clearTimeout(connectionTimeout);
-            cleanup();
-            
-            if (event.code === 1000) return;
-            
-            if (reconnectAttempts < maxReconnectAttempts) {
-                reconnectAttempts++;
-                const delay = Math.min(1000 * Math.pow(1.5, reconnectAttempts), 30000);
-                
-                term.write(`\r\n\x1b[33m⚠️ Mất kết nối. Thử lại lần ${reconnectAttempts}/${maxReconnectAttempts} sau ${Math.round(delay/1000)}s...\x1b[0m\r\n`);
-                
-                reconnectTimeout = setTimeout(() => {
-                    console.log('🔄 Reconnecting...');
-                    createConnection();
-                }, delay);
-            }
-        };
-        
-        term.onData((data) => {
-            if (ws && ws.readyState === WebSocket.OPEN) {
-                ws.send(data);
-            }
-        });
-        
-        term.onResize((size) => {
-            if (ws && ws.readyState === WebSocket.OPEN) {
-                ws.send(JSON.stringify({
-                    type: 'resize',
-                    cols: size.cols,
-                    rows: size.rows
-                }));
-            }
-        });
     }
     
-    createConnection();
-    return ws;
+    connect();
 }
 
-// Xử lý nút ảo
-function setupVirtualKeys(term, ws) {
-    const keys = document.querySelectorAll('.virtual-key');
+// Tạo session mới
+function createNewSession() {
+    const sessionId = 'session_' + Date.now() + '_' + Math.random().toString(36).substring(7);
     
-    keys.forEach(key => {
-        key.addEventListener('touchstart', (e) => {
-            e.preventDefault();
+    const wrapper = document.getElementById('terminalWrapper');
+    const termDiv = document.createElement('div');
+    termDiv.id = `terminal-${sessionId}`;
+    termDiv.className = 'terminal-instance';
+    wrapper.appendChild(termDiv);
+    
+    const term = new Terminal({
+        cursorBlink: true,
+        theme: {
+            background: '#000000',
+            foreground: '#00ff00',
+            cursor: '#00ff00'
+        },
+        fontFamily: 'Menlo, Monaco, "Courier New", monospace',
+        fontSize: 14,
+        scrollback: 10000
+    });
+    
+    const fitAddon = new FitAddon.FitAddon();
+    term.loadAddon(fitAddon);
+    
+    term.open(termDiv);
+    setTimeout(() => fitAddon.fit(), 100);
+    
+    sessions.set(sessionId, {
+        id: sessionId,
+        term: term,
+        fitAddon: fitAddon,
+        element: termDiv,
+        history: []
+    });
+    
+    addTab(sessionId);
+    activateSession(sessionId);
+    
+    term.write(`\r\n\x1b[32m=== Terminal ${sessions.size} ===\x1b[0m\r\n`);
+    term.write(`\x1b[36mUser: ${currentUsername}\x1b[0m\r\n`);
+    term.write(`\x1b[33mSession: ${sessionId.substring(0,8)}...\x1b[0m\r\n\n`);
+    
+    term.onData((data) => {
+        if (ws && ws.readyState === WebSocket.OPEN) {
+            ws.send(JSON.stringify({
+                type: 'input',
+                sessionId: sessionId,
+                data: data
+            }));
+        }
+    });
+    
+    term.onResize((size) => {
+        if (ws && ws.readyState === WebSocket.OPEN) {
+            ws.send(JSON.stringify({
+                type: 'resize',
+                sessionId: sessionId,
+                cols: size.cols,
+                rows: size.rows
+            }));
+        }
+        setTimeout(() => fitAddon.fit(), 50);
+    });
+    
+    return sessionId;
+}
+
+// Thêm tab
+function addTab(sessionId) {
+    const container = document.getElementById('tabsContainer');
+    const tab = document.createElement('div');
+    tab.className = `tab ${sessionId === activeSessionId ? 'active' : ''}`;
+    tab.id = `tab-${sessionId}`;
+    tab.innerHTML = `
+        <span>📟 Term ${sessions.size}</span>
+        <span class="close" onclick="event.stopPropagation(); closeSession('${sessionId}')">✖</span>
+    `;
+    tab.onclick = () => activateSession(sessionId);
+    container.appendChild(tab);
+}
+
+// Kích hoạt session
+function activateSession(sessionId) {
+    if (activeSessionId === sessionId) return;
+    
+    sessions.forEach((session, id) => {
+        session.element.classList.remove('active');
+        document.getElementById(`tab-${id}`)?.classList.remove('active');
+    });
+    
+    const session = sessions.get(sessionId);
+    if (session) {
+        session.element.classList.add('active');
+        document.getElementById(`tab-${sessionId}`)?.classList.add('active');
+        activeSessionId = sessionId;
+        setTimeout(() => session.fitAddon.fit(), 50);
+    }
+}
+
+// Đóng session
+function closeSession(sessionId) {
+    if (sessions.size <= 1) {
+        addLog('⚠️ Không thể đóng terminal cuối cùng');
+        return;
+    }
+    
+    const session = sessions.get(sessionId);
+    if (session) {
+        session.term.dispose();
+        session.element.remove();
+        document.getElementById(`tab-${sessionId}`)?.remove();
+        sessions.delete(sessionId);
+        
+        const nextSession = sessions.keys().next().value;
+        if (nextSession) activateSession(nextSession);
+        
+        addLog(`📪 Đã đóng terminal ${sessionId.substring(0,8)}...`);
+    }
+}
+
+// Thêm tab mới
+document.getElementById('addTabBtn').onclick = () => {
+    const newId = createNewSession();
+    addLog(`📫 Mở terminal mới`);
+};
+
+// Setup nút ảo
+function setupVirtualKeys() {
+    const container = document.getElementById('virtualKeys');
+    
+    const keys = [
+        ['ESC', 'TAB', 'CTRL', 'ALT'],
+        ['HOME', 'END', 'PGUP', 'PGDN'],
+        ['⬆️', '⬇️', '⬅️', '➡️'],
+        ['📋 PM2 list', '📊 PM2 logs', '🐍 Python', '🟢 Node'],
+        ['📦 pip install', '📦 npm install', '⏹️ Stop all', '🔄 Restart all'],
+        ['📝 nano', '💾 save', '🚪 exit', '🔍 clear']
+    ];
+    
+    keys.forEach(row => {
+        const rowDiv = document.createElement('div');
+        rowDiv.className = 'key-row';
+        
+        row.forEach(key => {
+            const btn = document.createElement('div');
+            btn.className = 'virtual-key';
+            btn.textContent = key;
             
-            const keyData = key.dataset.key;
-            const cmdData = key.dataset.cmd;
-            
-            // Hiệu ứng nhấn
-            key.style.background = '#00ff00';
-            key.style.color = 'black';
-            
-            if (cmdData) {
-                // Gửi lệnh nhanh
-                if (ws && ws.readyState === WebSocket.OPEN) {
-                    cmdData.split('').forEach(char => {
-                        ws.send(char);
-                    });
-                    ws.send('\r'); // Enter
-                }
-                term.write(`\r\n\x1b[33m➜ ${cmdData}\x1b[0m\r\n`);
-            } else if (keyData) {
-                // Gửi phím đặc biệt
-                let sequence = '';
-                switch(keyData) {
-                    case 'esc': sequence = '\x1b'; break; // ESC
-                    case 'tab': sequence = '\t'; break; // TAB
-                    case 'ctrl': 
-                        term.write('\r\n\x1b[33m🔧 Đang ở chế độ CTRL. Nhấn phím tiếp theo...\x1b[0m\r\n');
-                        // Xử lý CTRL combination
-                        const ctrlHandler = (e) => {
-                            const char = e.data;
-                            if (char) {
-                                const ctrlChar = String.fromCharCode(char.charCodeAt(0) - 64); // CTRL+A = 1
-                                if (ws && ws.readyState === WebSocket.OPEN) {
-                                    ws.send(ctrlChar);
-                                }
-                                term.offData(ctrlHandler);
-                            }
-                        };
-                        term.onData(ctrlHandler);
-                        return;
-                    case 'alt': 
-                        term.write('\r\n\x1b[33m🔧 Đang ở chế độ ALT. Nhấn phím tiếp theo...\x1b[0m\r\n');
-                        const altHandler = (e) => {
-                            const char = e.data;
-                            if (char) {
-                                if (ws && ws.readyState === WebSocket.OPEN) {
-                                    ws.send('\x1b' + char);
-                                }
-                                term.offData(altHandler);
-                            }
-                        };
-                        term.onData(altHandler);
-                        return;
-                    case 'up': sequence = '\x1b[A'; break;
-                    case 'down': sequence = '\x1b[B'; break;
-                    case 'right': sequence = '\x1b[C'; break;
-                    case 'left': sequence = '\x1b[D'; break;
-                    case 'home': sequence = '\x1b[H'; break;
-                    case 'end': sequence = '\x1b[F'; break;
-                    case 'pageup': sequence = '\x1b[5~'; break;
-                    case 'pagedown': sequence = '\x1b[6~'; break;
+            btn.onclick = () => {
+                const activeSession = sessions.get(activeSessionId);
+                if (!activeSession || !ws || ws.readyState !== WebSocket.OPEN) return;
+                
+                switch(key) {
+                    case 'ESC': ws.send('\x1b'); break;
+                    case 'TAB': ws.send('\t'); break;
+                    case 'CTRL': 
+                        activeSession.term.write('\r\n🔧 CTRL mode - nhấn phím...\r\n');
+                        break;
+                    case 'ALT':
+                        activeSession.term.write('\r\n🔧 ALT mode - nhấn phím...\r\n');
+                        break;
+                    case '⬆️': ws.send('\x1b[A'); break;
+                    case '⬇️': ws.send('\x1b[B'); break;
+                    case '⬅️': ws.send('\x1b[D'); break;
+                    case '➡️': ws.send('\x1b[C'); break;
+                    case 'HOME': ws.send('\x1b[H'); break;
+                    case 'END': ws.send('\x1b[F'); break;
+                    case 'PGUP': ws.send('\x1b[5~'); break;
+                    case 'PGDN': ws.send('\x1b[6~'); break;
+                    case '📋 PM2 list': sendCommand('pm2 list'); break;
+                    case '📊 PM2 logs': sendCommand('pm2 logs'); break;
+                    case '⏹️ Stop all': sendCommand('pm2 stop all'); break;
+                    case '🔄 Restart all': sendCommand('pm2 restart all'); break;
+                    case '🐍 Python': sendCommand('python '); break;
+                    case '🟢 Node': sendCommand('node '); break;
+                    case '📦 pip install': sendCommand('pip install '); break;
+                    case '📦 npm install': sendCommand('npm install'); break;
+                    case '📝 nano': sendCommand('nano '); break;
+                    case '💾 save': 
+                        ws.send('\x0F');
+                        setTimeout(() => ws.send('\r'), 100);
+                        break;
+                    case '🚪 exit': ws.send('\x18'); break;
+                    case '🔍 clear': sendCommand('clear'); break;
                 }
                 
-                if (sequence && ws && ws.readyState === WebSocket.OPEN) {
-                    ws.send(sequence);
-                }
-            }
+                addLog(`🔘 Đã nhấn: ${key}`);
+            };
             
-            // Reset sau 100ms
-            setTimeout(() => {
-                key.style.background = '';
-                key.style.color = '';
-            }, 100);
+            rowDiv.appendChild(btn);
         });
         
-        // Ngăn click chuột thông thường
-        key.addEventListener('click', (e) => {
-            e.preventDefault();
-        });
+        container.appendChild(rowDiv);
     });
 }
 
-function showError(message) {
-    const terminalEl = document.getElementById('terminal-container');
-    if (terminalEl) {
-        terminalEl.innerHTML = `
-            <div style="color: red; padding: 20px; font-family: monospace; text-align: center;">
-                <div style="font-size: 20px; margin-bottom: 20px;">❌ ${message}</div>
-                <button onclick="window.location.reload()" 
-                    style="padding: 12px 24px; background: #00ff00; color: black; border: none; border-radius: 5px; cursor: pointer; font-size: 16px;">
-                    Tải lại trang
-                </button>
-            </div>
-        `;
-    }
+// Setup nút nano
+function setupNanoButtons() {
+    document.getElementById('nanoSaveBtn').onclick = () => {
+        if (ws && ws.readyState === WebSocket.OPEN) {
+            ws.send('\x0F');
+            setTimeout(() => ws.send('\r'), 100);
+            addLog('💾 Đã lưu file');
+        }
+    };
+    
+    document.getElementById('nanoExitBtn').onclick = () => {
+        if (ws && ws.readyState === WebSocket.OPEN) {
+            ws.send('\x18');
+            addLog('🚪 Thoát nano');
+        }
+    };
+    
+    document.getElementById('nanoForceBtn').onclick = () => {
+        if (ws && ws.readyState === WebSocket.OPEN) {
+            ws.send('\x18');
+            setTimeout(() => ws.send('n'), 100);
+            addLog('⚠️ Thoát không lưu');
+        }
+    };
 }
+
+// Gửi lệnh
+function sendCommand(cmd) {
+    const activeSession = sessions.get(activeSessionId);
+    if (!activeSession || !ws || ws.readyState !== WebSocket.OPEN) return;
+    
+    cmd.split('').forEach(char => ws.send(char));
+    ws.send('\r');
+    addLog(`📤 Lệnh: ${cmd}`);
+}
+
+// Log system
+function addLog(message) {
+    const time = new Date().toLocaleTimeString('vi-VN', {
+        hour: '2-digit',
+        minute: '2-digit',
+        second: '2-digit'
+    });
+    
+    logData.push({
+        time: time,
+        message: message,
+        timestamp: Date.now()
+    });
+    
+    if (logData.length > 200) {
+        logData = logData.slice(-200);
+    }
+    
+    try {
+        localStorage.setItem('terminalLogs_v2', JSON.stringify(logData));
+    } catch (e) {
+        if (e.name === 'QuotaExceededError') {
+            logData = logData.slice(-100);
+            localStorage.setItem('terminalLogs_v2', JSON.stringify(logData));
+        }
+    }
+    
+    displayLogs();
+}
+
+// Hiển thị logs
+function displayLogs() {
+    const logContent = document.getElementById('logContent');
+    logContent.innerHTML = logData.map(log => 
+        `<div style="color: ${log.message.includes('🟢') ? '#00ff00' : 
+                              log.message.includes('🔴') ? '#ff5555' : 
+                              log.message.includes('⚠️') ? '#ffaa00' : '#00ff00'}">
+            [${log.time}] ${log.message}
+        </div>`
+    ).join('');
+    
+    logContent.scrollTop = logContent.scrollHeight;
+}
+
+// Setup log panel
+function setupLogPanel() {
+    document.getElementById('closeLogBtn').onclick = () => {
+        document.getElementById('logPanel').style.display = 'none';
+    };
+    
+    document.addEventListener('keydown', (e) => {
+        if (e.ctrlKey && e.key === 'l') {
+            document.getElementById('logPanel').style.display = 'block';
+            e.preventDefault();
+        }
+    });
+}
+
+// Show error
+function showError(message) {
+    document.getElementById('terminalWrapper').innerHTML = `
+        <div style="color: red; padding: 30px; text-align: center;">
+            ❌ ${message}<br><br>
+            <button onclick="window.location.reload()" 
+                style="padding: 10px 30px; background: #00ff00; border: none; border-radius: 5px; cursor: pointer;">
+                Tải lại
+            </button>
+        </div>
+    `;
+}
+
+// Resize handler
+window.addEventListener('resize', () => {
+    sessions.forEach(session => {
+        setTimeout(() => session.fitAddon.fit(), 50);
+    });
+});
+
+window.addEventListener('beforeunload', () => {
+    if (ws) {
+        ws.close();
+    }
+});
