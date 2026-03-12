@@ -3,45 +3,82 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Web Terminal - Đang tải...</title>
+    <title>Web Terminal</title>
     <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/xterm/css/xterm.css" />
     <style>
-        body, html {
+        * {
             margin: 0;
             padding: 0;
+            box-sizing: border-box;
+        }
+        
+        body, html {
             height: 100%;
             background-color: black;
             overflow: hidden;
+            font-family: monospace;
         }
+        
         #terminal-container {
             height: 100%;
             width: 100%;
             background-color: black;
-            padding-top: 50px;
+            padding: 50px 0 0 0;
             box-sizing: border-box;
         }
+        
         #loading {
-            color: #00ff00;
-            font-family: monospace;
-            font-size: 16px;
-            position: absolute;
+            position: fixed;
             top: 50%;
             left: 50%;
             transform: translate(-50%, -50%);
+            color: #00ff00;
             text-align: center;
+            z-index: 100;
+            background: black;
+            padding: 20px;
+            border-radius: 5px;
+            border: 1px solid #00ff00;
+        }
+        
+        .xterm {
+            padding: 10px;
+            height: 100%;
+        }
+        
+        ::-webkit-scrollbar {
+            width: 10px;
+            height: 10px;
+        }
+        
+        ::-webkit-scrollbar-track {
+            background: #1e1e1e;
+        }
+        
+        ::-webkit-scrollbar-thumb {
+            background: #888;
+            border-radius: 5px;
+        }
+        
+        ::-webkit-scrollbar-thumb:hover {
+            background: #555;
+        }
+        
+        #logout-btn:hover {
+            opacity: 0.8;
         }
     </style>
 </head>
 <body>
     <div id="loading">
-        <div>Đang kết nối đến Web Terminal...</div>
-        <div style="margin-top: 20px; color: #666;">Vui lòng đợi</div>
+        <div>⚡ Đang khởi tạo Web Terminal...</div>
+        <div style="margin-top: 20px; color: #666; font-size: 14px;">Vui lòng đợi trong giây lát</div>
     </div>
+    
     <div id="terminal-container" style="display: none;"></div>
     
     <script src="https://cdn.jsdelivr.net/npm/xterm/lib/xterm.js"></script>
     <script src="https://cdn.jsdelivr.net/npm/xterm-addon-fit/lib/xterm-addon-fit.js"></script>
-    <script src="auth.js"></script>
     <script src="terminal.js"></script>
 </body>
 </html>
