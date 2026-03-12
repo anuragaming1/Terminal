@@ -2,14 +2,15 @@
 <html lang="vi">
 <head>
     <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Web Terminal</title>
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    <title>Web Terminal - Mobile</title>
     <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/xterm/css/xterm.css" />
     <style>
         * {
             margin: 0;
             padding: 0;
             box-sizing: border-box;
+            -webkit-tap-highlight-color: transparent;
         }
         
         body, html {
@@ -17,14 +18,17 @@
             background-color: black;
             overflow: hidden;
             font-family: monospace;
+            position: fixed;
+            width: 100%;
         }
         
         #terminal-container {
-            height: 100%;
+            height: calc(100% - 180px); /* Giảm chiều cao để chừa chỗ cho nút */
             width: 100%;
             background-color: black;
-            padding: 50px 0 0 0;
+            padding: 10px 0 0 0;
             box-sizing: border-box;
+            overflow-y: auto;
         }
         
         #loading {
@@ -42,13 +46,131 @@
         }
         
         .xterm {
-            padding: 10px;
+            padding: 5px;
             height: 100%;
         }
         
+        /* Thanh nút ảo cho điện thoại */
+        .virtual-keys {
+            position: fixed;
+            bottom: 0;
+            left: 0;
+            right: 0;
+            background: #1a1a1a;
+            border-top: 2px solid #00ff00;
+            padding: 8px 5px;
+            display: flex;
+            flex-wrap: wrap;
+            justify-content: center;
+            gap: 6px;
+            z-index: 2000;
+            box-shadow: 0 -2px 10px rgba(0,255,0,0.2);
+        }
+        
+        .key-row {
+            display: flex;
+            width: 100%;
+            justify-content: center;
+            gap: 6px;
+            margin-bottom: 6px;
+        }
+        
+        .key-row:last-child {
+            margin-bottom: 0;
+        }
+        
+        .virtual-key {
+            background: #333;
+            border: 1px solid #00ff00;
+            color: #00ff00;
+            padding: 12px 0;
+            border-radius: 8px;
+            font-size: 16px;
+            font-weight: bold;
+            text-align: center;
+            cursor: pointer;
+            user-select: none;
+            touch-action: manipulation;
+            box-shadow: 0 2px 5px rgba(0,255,0,0.1);
+            transition: all 0.1s;
+            flex: 1;
+            min-width: 60px;
+            max-width: 80px;
+        }
+        
+        .virtual-key.wide {
+            flex: 2;
+            max-width: 120px;
+        }
+        
+        .virtual-key.special {
+            background: #004400;
+            border-color: #00ff00;
+            color: #00ff00;
+            font-weight: bold;
+        }
+        
+        .virtual-key:active {
+            background: #00ff00;
+            color: black;
+            transform: scale(0.95);
+        }
+        
+        /* Nút đặc biệt cho CTRL+组合 */
+        .key-combo {
+            background: #442200;
+            border-color: #ffaa00;
+            color: #ffaa00;
+        }
+        
+        /* Nút gửi lệnh nhanh */
+        .quick-commands {
+            position: fixed;
+            top: 10px;
+            right: 10px;
+            z-index: 1500;
+            display: flex;
+            gap: 5px;
+        }
+        
+        .quick-cmd {
+            background: #004400;
+            color: #00ff00;
+            border: 1px solid #00ff00;
+            border-radius: 5px;
+            padding: 5px 10px;
+            font-size: 12px;
+            cursor: pointer;
+        }
+        
+        #user-info {
+            position: fixed;
+            top: 10px;
+            left: 10px;
+            z-index: 1500;
+            padding: 5px 10px;
+            background-color: #27ae60;
+            color: white;
+            border-radius: 4px;
+            font-size: 12px;
+        }
+        
+        #logout-btn {
+            position: fixed;
+            top: 10px;
+            right: 10px;
+            z-index: 1500;
+            padding: 5px 10px;
+            background-color: #e74c3c;
+            color: white;
+            border: none;
+            border-radius: 4px;
+            font-size: 12px;
+            cursor: pointer;
+        }
+        
         ::-webkit-scrollbar {
-            width: 10px;
-            height: 10px;
+            width: 5px;
         }
         
         ::-webkit-scrollbar-track {
@@ -56,29 +178,85 @@
         }
         
         ::-webkit-scrollbar-thumb {
-            background: #888;
+            background: #00ff00;
             border-radius: 5px;
         }
         
-        ::-webkit-scrollbar-thumb:hover {
-            background: #555;
-        }
-        
-        #logout-btn:hover {
-            opacity: 0.8;
+        @media (max-width: 480px) {
+            .virtual-key {
+                padding: 10px 0;
+                font-size: 14px;
+            }
+            
+            #terminal-container {
+                height: calc(100% - 200px);
+            }
         }
     </style>
 </head>
 <body>
     <div id="loading">
         <div>⚡ Đang khởi tạo Web Terminal...</div>
-        <div style="margin-top: 20px; color: #666; font-size: 14px;">Vui lòng đợi trong giây lát</div>
+        <div style="margin-top: 20px; color: #666; font-size: 14px;">Vui lòng đợi</div>
     </div>
     
     <div id="terminal-container" style="display: none;"></div>
     
+    <!-- Thanh nút ảo cho điện thoại -->
+    <div class="virtual-keys" id="virtualKeys" style="display: none;">
+        <!-- Hàng 1: ESC, TAB, CTRL, ALT -->
+        <div class="key-row">
+            <div class="virtual-key special" data-key="esc">ESC</div>
+            <div class="virtual-key special" data-key="tab">TAB</div>
+            <div class="virtual-key special key-combo" data-key="ctrl">CTRL</div>
+            <div class="virtual-key special key-combo" data-key="alt">ALT</div>
+        </div>
+        
+        <!-- Hàng 2: HOME, END, PGUP, PGDN -->
+        <div class="key-row">
+            <div class="virtual-key special" data-key="home">HOME</div>
+            <div class="virtual-key special" data-key="end">END</div>
+            <div class="virtual-key special" data-key="pageup">PGUP</div>
+            <div class="virtual-key special" data-key="pagedown">PGDN</div>
+        </div>
+        
+        <!-- Hàng 3: Mũi tên -->
+        <div class="key-row">
+            <div class="virtual-key" data-key="up">⬆️</div>
+            <div class="virtual-key" data-key="down">⬇️</div>
+            <div class="virtual-key" data-key="left">⬅️</div>
+            <div class="virtual-key" data-key="right">➡️</div>
+        </div>
+        
+        <!-- Hàng 4: Lệnh nhanh cho bot -->
+        <div class="key-row">
+            <div class="virtual-key wide" data-cmd="pm2 list">📋 PM2 List</div>
+            <div class="virtual-key wide" data-cmd="pm2 logs">📊 PM2 Logs</div>
+        </div>
+        <div class="key-row">
+            <div class="virtual-key" data-cmd="python bot.py">🐍 Python</div>
+            <div class="virtual-key" data-cmd="node bot.js">🟢 Node.js</div>
+            <div class="virtual-key" data-cmd="pip install discord.py">📦 pip</div>
+            <div class="virtual-key" data-cmd="npm install">📦 npm</div>
+        </div>
+        <div class="key-row">
+            <div class="virtual-key wide" data-cmd="pm2 stop all">⏹️ Stop all</div>
+            <div class="virtual-key wide" data-cmd="pm2 restart all">🔄 Restart all</div>
+        </div>
+    </div>
+    
     <script src="https://cdn.jsdelivr.net/npm/xterm/lib/xterm.js"></script>
     <script src="https://cdn.jsdelivr.net/npm/xterm-addon-fit/lib/xterm-addon-fit.js"></script>
     <script src="terminal.js"></script>
+    
+    <script>
+        // Xử lý khi trang load xong
+        document.addEventListener('DOMContentLoaded', function() {
+            // Kiểm tra nếu là điện thoại
+            if (window.innerWidth <= 768) {
+                console.log('📱 Mobile detected, showing virtual keys');
+            }
+        });
+    </script>
 </body>
 </html>
