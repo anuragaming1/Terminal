@@ -14,7 +14,7 @@ const server = http.createServer(app);
 
 // QUAN TRỌNG: Tạo WebSocket server với `noServer` option
 const wss = new WebSocket.Server({ 
-    noServer: true,  // Quan trọng: không tự động upgrade
+    noServer: true,
     perMessageDeflate: false,
     clientTracking: true
 });
@@ -45,6 +45,10 @@ fs.ensureDirSync(DATA_DIR);
 if (!fs.existsSync(USERS_FILE)) {
     fs.writeJsonSync(USERS_FILE, {});
 }
+
+// Session store cho WebSocket
+const sessionStore = new Map(); // Lưu session data theo token
+const userTerminals = new Map(); // Lưu các PTY processes theo user
 
 // Helper functions
 function readUsers() {
@@ -113,6 +117,14 @@ app.post('/api/register', async (req, res) => {
             return res.status(400).json({ error: 'Username và password là bắt buộc' });
         }
         
+        if (username.length < 3 || username.length > 20) {
+            return res.status(400).json({ error: 'Username phải từ 3-20 ký tự' });
+        }
+        
+        if (password.length < 6) {
+            return res.status(400).json({ error: 'Password phải có ít nhất 6 ký tự' });
+        }
+        
         const users = readUsers();
         
         if (users[username]) {
@@ -142,6 +154,10 @@ app.post('/api/register', async (req, res) => {
 app.post('/api/login', async (req, res) => {
     try {
         const { username, password } = req.body;
+        
+        if (!username || !password) {
+            return res.status(400).json({ error: 'Username và password là bắt buộc' });
+        }
         
         const users = readUsers();
         const user = users[username];
@@ -175,8 +191,31 @@ app.post('/api/logout', (req, res) => {
     res.json({ success: true });
 });
 
-// Lưu trữ terminal sessions
-const userTerminals = new Map();
+// API Debug files
+app.get('/debug/files', requireAuth, (req, res) => {
+    const publicPath = path.join(__dirname, 'public');
+    try {
+        const files = fs.readdirSync(publicPath);
+        res.json({
+            publicExists: fs.existsSync(publicPath),
+            files: files,
+            cwd: process.cwd(),
+            dirname: __dirname
+        });
+    } catch (err) {
+        res.json({ error: err.message });
+    }
+});
+
+// API để kiểm tra WebSocket status
+app.get('/api/ws-status', (req, res) => {
+    res.json({
+        totalClients: wss.clients.size,
+        clients: Array.from(wss.clients).map(c => ({
+            readyState: c.readyState
+        }))
+    });
+});
 
 // QUAN TRỌNG: Xử lý upgrade request đúng cách
 server.on('upgrade', function upgrade(request, socket, head) {
@@ -204,7 +243,7 @@ wss.on('connection', (ws, req) => {
     console.log(`🔌 WebSocket connected from: ${clientIp}`);
     
     let currentUser = null;
-    let currentPty = null;
+    let sessionToken = null;
     let pingInterval = null;
     let isAlive = true;
     
@@ -237,10 +276,7 @@ wss.on('connection', (ws, req) => {
             try {
                 data = JSON.parse(message);
             } catch (e) {
-                // Không phải JSON, gửi vào PTY nếu đã xác thực
-                if (currentPty) {
-                    currentPty.write(message);
-                }
+                // Không phải JSON, bỏ qua
                 return;
             }
             
@@ -250,70 +286,124 @@ wss.on('connection', (ws, req) => {
                 return;
             }
             
-            // Xác thực user
-            if (data.type === 'auth') {
+            // Xử lý init với session token
+            if (data.type === 'init') {
+                sessionToken = data.sessionToken;
                 currentUser = data.username;
-                console.log(`👤 User authenticated: ${currentUser} from ${clientIp}`);
+                console.log(`👤 User init: ${currentUser} with token: ${sessionToken}`);
+                
+                // Kiểm tra nếu đã có session cũ
+                if (sessionStore.has(sessionToken)) {
+                    const oldSession = sessionStore.get(sessionToken);
+                    console.log(`🔄 Restoring session for ${currentUser}`);
+                    // Gửi logs cũ về client
+                    ws.send(JSON.stringify({
+                        type: 'restore',
+                        logs: oldSession.logs || []
+                    }));
+                } else {
+                    // Tạo session mới
+                    sessionStore.set(sessionToken, {
+                        username: currentUser,
+                        logs: [],
+                        createdAt: new Date()
+                    });
+                    console.log(`✨ New session created for ${currentUser}`);
+                }
+                return;
+            }
+            
+            // Xử lý auth với sessionId
+            if (data.type === 'auth') {
+                const { username, sessionId, cols, rows } = data;
+                currentUser = username;
+                
+                console.log(`👤 Auth session: ${sessionId} for ${username}`);
                 
                 // Tạo workspace cho user
-                const userDir = createUserWorkspace(currentUser);
+                const userDir = createUserWorkspace(username);
                 
                 // Kill PTY cũ nếu có
-                if (currentPty) {
+                const oldPty = userTerminals.get(username)?.get(sessionId);
+                if (oldPty) {
                     try {
-                        currentPty.kill();
+                        oldPty.kill();
                     } catch (e) {}
                 }
                 
                 // Khởi tạo PTY mới
                 const shell = os.platform() === 'win32' ? 'powershell.exe' : 'bash';
-                currentPty = pty.spawn(shell, [], {
+                const ptyProcess = pty.spawn(shell, [], {
                     name: 'xterm-color',
-                    cols: data.cols || 80,
-                    rows: data.rows || 30,
+                    cols: cols || 80,
+                    rows: rows || 30,
                     cwd: userDir,
                     env: {
                         ...process.env,
-                        USER: currentUser,
+                        USER: username,
                         HOME: userDir,
-                        PS1: `\\[\\e[32m\\]${currentUser}@web-terminal\\[\\e[0m\\]:\\[\\e[34m\\]\\w\\[\\e[0m\\]\\$ `
+                        PS1: `\\[\\e[32m\\]${username}@web-terminal\\[\\e[0m\\]:\\[\\e[34m\\]\\w\\[\\e[0m\\]\\$ `
                     }
                 });
                 
                 // Lưu PTY
-                if (!userTerminals.has(currentUser)) {
-                    userTerminals.set(currentUser, new Map());
+                if (!userTerminals.has(username)) {
+                    userTerminals.set(username, new Map());
                 }
-                const sessionId = Date.now().toString();
-                userTerminals.get(currentUser).set(sessionId, currentPty);
+                userTerminals.get(username).set(sessionId, ptyProcess);
                 
                 // Gửi dữ liệu từ PTY tới client
-                currentPty.on('data', (ptyData) => {
+                ptyProcess.on('data', (ptyData) => {
                     if (ws.readyState === WebSocket.OPEN) {
-                        ws.send(ptyData);
+                        ws.send(JSON.stringify({
+                            sessionId: sessionId,
+                            data: ptyData.toString()
+                        }));
                     }
                 });
                 
                 // Xử lý lỗi PTY
-                currentPty.on('error', (err) => {
-                    console.error(`❌ PTY error for ${currentUser}:`, err);
+                ptyProcess.on('error', (err) => {
+                    console.error(`❌ PTY error for ${username}:`, err);
                 });
-                
-                // Gửi thông báo chào mừng
-                setTimeout(() => {
-                    if (ws.readyState === WebSocket.OPEN) {
-                        ws.send(`\r\n\x1b[32m=== Chào mừng ${currentUser} đến Web Terminal ===\x1b[0m\r\n`);
-                        ws.send(`\x1b[33mWorkspace: ${userDir}\x1b[0m\r\n`);
-                        ws.send(`\x1b[36mGõ 'help' để xem hướng dẫn\x1b[0m\r\n\n`);
-                    }
-                }, 100);
                 
                 return;
             }
             
+            // Xử lý input
+            if (data.type === 'input') {
+                const { sessionId, data: inputData } = data;
+                
+                if (!currentUser) {
+                    console.log('⚠️ Input received but no user authenticated');
+                    return;
+                }
+                
+                const pty = userTerminals.get(currentUser)?.get(sessionId);
+                if (pty) {
+                    pty.write(inputData);
+                    
+                    // Log command nếu là Enter
+                    if (inputData === '\r') {
+                        // Command executed
+                    }
+                }
+                return;
+            }
+            
             // Xử lý resize
-            if (data.type === 'resize' && currentPty) {
-                currentPty.resize(data.cols, data.rows);
+            if (data.type === 'resize') {
+                const { sessionId, cols, rows } = data;
+                
+                if (!currentUser) {
+                    console.log('⚠️ Resize received but no user authenticated');
+                    return;
+                }
+                
+                const pty = userTerminals.get(currentUser)?.get(sessionId);
+                if (pty) {
+                    pty.resize(cols, rows);
+                }
                 return;
             }
             
@@ -330,35 +420,24 @@ wss.on('connection', (ws, req) => {
         console.log(`🔌 WebSocket closed: ${code} ${reason.toString()}`);
         clearInterval(pingInterval);
         
-        // Cleanup PTY
-        if (currentUser && currentPty) {
-            try {
-                currentPty.kill();
-            } catch (e) {}
+        // Không xóa PTY ngay, giữ vài phút để có thể reconnect
+        if (currentUser) {
+            console.log(`👤 User ${currentUser} disconnected, keeping PTYs for 5 minutes`);
             
-            const userSessions = userTerminals.get(currentUser);
-            if (userSessions) {
-                for (const [sid, pty] of userSessions) {
-                    if (pty === currentPty) {
-                        userSessions.delete(sid);
-                        break;
+            setTimeout(() => {
+                // Cleanup PTYs cũ
+                const userSessions = userTerminals.get(currentUser);
+                if (userSessions) {
+                    console.log(`🧹 Cleaning up PTYs for ${currentUser}`);
+                    for (const [sid, pty] of userSessions) {
+                        try {
+                            pty.kill();
+                        } catch (e) {}
                     }
-                }
-                if (userSessions.size === 0) {
                     userTerminals.delete(currentUser);
                 }
-            }
+            }, 5 * 60 * 1000); // 5 phút
         }
-    });
-});
-
-// API để kiểm tra WebSocket status
-app.get('/api/ws-status', (req, res) => {
-    res.json({
-        totalClients: wss.clients.size,
-        clients: Array.from(wss.clients).map(c => ({
-            readyState: c.readyState
-        }))
     });
 });
 
@@ -367,4 +446,23 @@ server.listen(PORT, '0.0.0.0', () => {
     console.log(`🚀 Server running on port ${PORT}`);
     console.log(`📁 Data directory: ${DATA_DIR}`);
     console.log(`🌐 WebSocket server ready (noServer mode)`);
+});
+
+// Cleanup on exit
+process.on('SIGTERM', () => {
+    console.log('SIGTERM received, cleaning up...');
+    
+    // Kill all PTYs
+    for (const [username, sessions] of userTerminals) {
+        for (const [sid, pty] of sessions) {
+            try {
+                pty.kill();
+            } catch (e) {}
+        }
+    }
+    
+    server.close(() => {
+        console.log('Server closed');
+        process.exit(0);
+    });
 });
