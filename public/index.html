@@ -2,77 +2,207 @@
 <html lang="vi">
 <head>
     <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
-    <title>Web Terminal - Mobile</title>
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=5.0, user-scalable=yes">
+    <title>Web Terminal - Multi Session</title>
     <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/xterm/css/xterm.css" />
     <style>
         * {
             margin: 0;
             padding: 0;
             box-sizing: border-box;
-            -webkit-tap-highlight-color: transparent;
         }
         
         body, html {
             height: 100%;
-            background-color: black;
+            background-color: #1a1a1a;
             overflow: hidden;
-            font-family: monospace;
-            position: fixed;
-            width: 100%;
+            font-family: 'Segoe UI', monospace;
         }
         
-        #terminal-container {
-            height: calc(100% - 180px); /* Giảm chiều cao để chừa chỗ cho nút */
-            width: 100%;
-            background-color: black;
-            padding: 10px 0 0 0;
-            box-sizing: border-box;
-            overflow-y: auto;
+        /* Thanh tab */
+        .tab-bar {
+            position: fixed;
+            top: 0;
+            left: 0;
+            right: 0;
+            height: 45px;
+            background: #2d2d2d;
+            display: flex;
+            align-items: center;
+            padding: 0 15px;
+            gap: 10px;
+            overflow-x: auto;
+            white-space: nowrap;
+            z-index: 2000;
+            border-bottom: 2px solid #00ff00;
         }
         
-        #loading {
-            position: fixed;
-            top: 50%;
-            left: 50%;
-            transform: translate(-50%, -50%);
-            color: #00ff00;
-            text-align: center;
-            z-index: 100;
-            background: black;
-            padding: 20px;
+        .tab {
+            background: #3d3d3d;
+            color: #aaa;
+            padding: 8px 20px;
+            border-radius: 5px 5px 0 0;
+            font-size: 14px;
+            cursor: pointer;
+            display: inline-flex;
+            align-items: center;
+            gap: 10px;
+            border: 1px solid #555;
+            border-bottom: none;
+        }
+        
+        .tab.active {
+            background: #00ff00;
+            color: black;
+            font-weight: bold;
+            border-color: #00ff00;
+        }
+        
+        .tab .close {
+            color: #ff5555;
+            font-weight: bold;
+            padding: 0 8px;
+            border-radius: 3px;
+        }
+        
+        .tab .close:hover {
+            background: #ff5555;
+            color: white;
+        }
+        
+        .add-tab {
+            background: #00aa00;
+            color: white;
+            padding: 8px 20px;
             border-radius: 5px;
-            border: 1px solid #00ff00;
+            font-size: 14px;
+            cursor: pointer;
+            border: none;
+            font-weight: bold;
         }
         
-        .xterm {
-            padding: 5px;
+        .add-tab:hover {
+            background: #00ff00;
+            color: black;
+        }
+        
+        /* User section */
+        .user-section {
+            position: fixed;
+            top: 0;
+            right: 15px;
+            height: 45px;
+            display: flex;
+            align-items: center;
+            gap: 15px;
+            z-index: 2100;
+        }
+        
+        #user-info {
+            background: #27ae60;
+            color: white;
+            padding: 6px 15px;
+            border-radius: 4px;
+            font-size: 14px;
+            font-weight: bold;
+        }
+        
+        #logout-btn {
+            background: #e74c3c;
+            color: white;
+            border: none;
+            padding: 6px 15px;
+            border-radius: 4px;
+            font-size: 14px;
+            cursor: pointer;
+            font-weight: bold;
+        }
+        
+        #logout-btn:hover {
+            background: #ff5555;
+        }
+        
+        /* Terminal container */
+        .terminal-wrapper {
+            position: fixed;
+            top: 45px;
+            left: 0;
+            right: 0;
+            bottom: 280px;
+            background: black;
+        }
+        
+        .terminal-instance {
+            width: 100%;
             height: 100%;
+            display: none;
         }
         
-        /* Thanh nút ảo cho điện thoại */
+        .terminal-instance.active {
+            display: block;
+        }
+        
+        /* Quick buttons cho nano - LUÔN HIỆN */
+        .nano-buttons {
+            position: fixed;
+            bottom: 240px;
+            left: 0;
+            right: 0;
+            background: #2d2d2d;
+            padding: 12px;
+            display: flex;
+            justify-content: center;
+            gap: 20px;
+            border-top: 2px solid #00ff00;
+            border-bottom: 2px solid #00ff00;
+            z-index: 1900;
+        }
+        
+        .nano-btn {
+            background: #4d4d4d;
+            color: white;
+            border: 2px solid #00ff00;
+            padding: 12px 30px;
+            border-radius: 8px;
+            font-size: 16px;
+            font-weight: bold;
+            cursor: pointer;
+            min-width: 120px;
+        }
+        
+        .nano-btn:hover {
+            background: #00ff00;
+            color: black;
+        }
+        
+        .nano-btn.save {
+            background: #00aa00;
+        }
+        
+        .nano-btn.exit {
+            background: #aa5500;
+        }
+        
+        .nano-btn.force {
+            background: #aa0000;
+        }
+        
+        /* Virtual keys - LUÔN HIỆN */
         .virtual-keys {
             position: fixed;
             bottom: 0;
             left: 0;
             right: 0;
             background: #1a1a1a;
-            border-top: 2px solid #00ff00;
-            padding: 8px 5px;
-            display: flex;
-            flex-wrap: wrap;
-            justify-content: center;
-            gap: 6px;
+            border-top: 3px solid #00ff00;
+            padding: 10px;
             z-index: 2000;
-            box-shadow: 0 -2px 10px rgba(0,255,0,0.2);
         }
         
         .key-row {
             display: flex;
-            width: 100%;
-            justify-content: center;
-            gap: 6px;
-            margin-bottom: 6px;
+            gap: 8px;
+            margin-bottom: 8px;
         }
         
         .key-row:last-child {
@@ -84,93 +214,94 @@
             border: 1px solid #00ff00;
             color: #00ff00;
             padding: 12px 0;
-            border-radius: 8px;
-            font-size: 16px;
+            border-radius: 6px;
+            font-size: 14px;
             font-weight: bold;
             text-align: center;
-            cursor: pointer;
-            user-select: none;
-            touch-action: manipulation;
-            box-shadow: 0 2px 5px rgba(0,255,0,0.1);
-            transition: all 0.1s;
             flex: 1;
-            min-width: 60px;
-            max-width: 80px;
+            cursor: pointer;
+            transition: all 0.1s;
         }
         
-        .virtual-key.wide {
-            flex: 2;
-            max-width: 120px;
+        .virtual-key:hover {
+            background: #00ff00;
+            color: black;
         }
         
         .virtual-key.special {
             background: #004400;
-            border-color: #00ff00;
+        }
+        
+        .virtual-key.wide {
+            flex: 2;
+        }
+        
+        /* Log panel */
+        .log-panel {
+            position: fixed;
+            bottom: 240px;
+            right: 20px;
+            width: 350px;
+            height: 200px;
+            background: rgba(0,0,0,0.95);
+            border: 2px solid #00ff00;
+            border-radius: 5px;
+            padding: 10px;
             color: #00ff00;
+            font-size: 12px;
+            overflow-y: auto;
+            z-index: 1800;
+            box-shadow: 0 0 20px rgba(0,255,0,0.3);
+        }
+        
+        .log-header {
+            display: flex;
+            justify-content: space-between;
+            margin-bottom: 10px;
+            padding-bottom: 5px;
+            border-bottom: 1px solid #00ff00;
             font-weight: bold;
         }
         
-        .virtual-key:active {
-            background: #00ff00;
-            color: black;
-            transform: scale(0.95);
+        #closeLogBtn {
+            cursor: pointer;
+            padding: 0 5px;
         }
         
-        /* Nút đặc biệt cho CTRL+组合 */
-        .key-combo {
-            background: #442200;
-            border-color: #ffaa00;
-            color: #ffaa00;
+        #closeLogBtn:hover {
+            color: red;
         }
         
-        /* Nút gửi lệnh nhanh */
-        .quick-commands {
+        #logContent {
+            height: calc(100% - 30px);
+            overflow-y: auto;
+        }
+        
+        #logContent div {
+            padding: 2px 0;
+            border-bottom: 1px solid #333;
+        }
+        
+        /* Loading */
+        #loading {
             position: fixed;
-            top: 10px;
-            right: 10px;
-            z-index: 1500;
-            display: flex;
-            gap: 5px;
-        }
-        
-        .quick-cmd {
-            background: #004400;
+            top: 50%;
+            left: 50%;
+            transform: translate(-50%, -50%);
             color: #00ff00;
-            border: 1px solid #00ff00;
-            border-radius: 5px;
-            padding: 5px 10px;
-            font-size: 12px;
-            cursor: pointer;
+            text-align: center;
+            z-index: 3000;
+            background: black;
+            padding: 30px;
+            border-radius: 10px;
+            border: 2px solid #00ff00;
+            font-size: 18px;
         }
         
-        #user-info {
-            position: fixed;
-            top: 10px;
-            left: 10px;
-            z-index: 1500;
-            padding: 5px 10px;
-            background-color: #27ae60;
-            color: white;
-            border-radius: 4px;
-            font-size: 12px;
-        }
-        
-        #logout-btn {
-            position: fixed;
-            top: 10px;
-            right: 10px;
-            z-index: 1500;
-            padding: 5px 10px;
-            background-color: #e74c3c;
-            color: white;
-            border: none;
-            border-radius: 4px;
-            font-size: 12px;
-            cursor: pointer;
-        }
-        
+        /* Scrollbar */
         ::-webkit-scrollbar {
-            width: 5px;
+            width: 8px;
+            height: 8px;
         }
         
         ::-webkit-scrollbar-track {
@@ -181,82 +312,47 @@
             background: #00ff00;
             border-radius: 5px;
         }
-        
-        @media (max-width: 480px) {
-            .virtual-key {
-                padding: 10px 0;
-                font-size: 14px;
-            }
-            
-            #terminal-container {
-                height: calc(100% - 200px);
-            }
-        }
     </style>
 </head>
 <body>
     <div id="loading">
-        <div>⚡ Đang khởi tạo Web Terminal...</div>
-        <div style="margin-top: 20px; color: #666; font-size: 14px;">Vui lòng đợi</div>
+        <div>⚡ WEB TERMINAL</div>
+        <div style="margin-top: 20px; color: #666;">Đang kết nối...</div>
     </div>
     
-    <div id="terminal-container" style="display: none;"></div>
-    
-    <!-- Thanh nút ảo cho điện thoại -->
-    <div class="virtual-keys" id="virtualKeys" style="display: none;">
-        <!-- Hàng 1: ESC, TAB, CTRL, ALT -->
-        <div class="key-row">
-            <div class="virtual-key special" data-key="esc">ESC</div>
-            <div class="virtual-key special" data-key="tab">TAB</div>
-            <div class="virtual-key special key-combo" data-key="ctrl">CTRL</div>
-            <div class="virtual-key special key-combo" data-key="alt">ALT</div>
-        </div>
-        
-        <!-- Hàng 2: HOME, END, PGUP, PGDN -->
-        <div class="key-row">
-            <div class="virtual-key special" data-key="home">HOME</div>
-            <div class="virtual-key special" data-key="end">END</div>
-            <div class="virtual-key special" data-key="pageup">PGUP</div>
-            <div class="virtual-key special" data-key="pagedown">PGDN</div>
-        </div>
-        
-        <!-- Hàng 3: Mũi tên -->
-        <div class="key-row">
-            <div class="virtual-key" data-key="up">⬆️</div>
-            <div class="virtual-key" data-key="down">⬇️</div>
-            <div class="virtual-key" data-key="left">⬅️</div>
-            <div class="virtual-key" data-key="right">➡️</div>
-        </div>
-        
-        <!-- Hàng 4: Lệnh nhanh cho bot -->
-        <div class="key-row">
-            <div class="virtual-key wide" data-cmd="pm2 list">📋 PM2 List</div>
-            <div class="virtual-key wide" data-cmd="pm2 logs">📊 PM2 Logs</div>
-        </div>
-        <div class="key-row">
-            <div class="virtual-key" data-cmd="python bot.py">🐍 Python</div>
-            <div class="virtual-key" data-cmd="node bot.js">🟢 Node.js</div>
-            <div class="virtual-key" data-cmd="pip install discord.py">📦 pip</div>
-            <div class="virtual-key" data-cmd="npm install">📦 npm</div>
-        </div>
-        <div class="key-row">
-            <div class="virtual-key wide" data-cmd="pm2 stop all">⏹️ Stop all</div>
-            <div class="virtual-key wide" data-cmd="pm2 restart all">🔄 Restart all</div>
-        </div>
+    <!-- Thanh tab -->
+    <div class="tab-bar" id="tabBar" style="display: none;">
+        <div class="tabs-container" id="tabsContainer" style="display: flex; gap: 10px; flex: 1; overflow-x: auto;"></div>
+        <button class="add-tab" id="addTabBtn">➕ Tab mới</button>
     </div>
+    
+    <!-- User section -->
+    <div class="user-section" id="userSection" style="display: none;"></div>
+    
+    <!-- Terminal containers -->
+    <div class="terminal-wrapper" id="terminalWrapper" style="display: none;"></div>
+    
+    <!-- Nút nano - LUÔN HIỆN -->
+    <div class="nano-buttons" id="nanoButtons">
+        <button class="nano-btn save" id="nanoSaveBtn">💾 Lưu (Ctrl+O)</button>
+        <button class="nano-btn exit" id="nanoExitBtn">🚪 Thoát (Ctrl+X)</button>
+        <button class="nano-btn force" id="nanoForceBtn">⚠️ Thoát không lưu</button>
+    </div>
+    
+    <!-- Log panel -->
+    <div class="log-panel" id="logPanel">
+        <div class="log-header">
+            <span>📋 LỊCH SỬ LỆNH</span>
+            <span id="closeLogBtn">✖</span>
+        </div>
+        <div id="logContent"></div>
+    </div>
+    
+    <!-- Virtual keys - LUÔN HIỆN -->
+    <div class="virtual-keys" id="virtualKeys"></div>
     
     <script src="https://cdn.jsdelivr.net/npm/xterm/lib/xterm.js"></script>
     <script src="https://cdn.jsdelivr.net/npm/xterm-addon-fit/lib/xterm-addon-fit.js"></script>
     <script src="terminal.js"></script>
-    
-    <script>
-        // Xử lý khi trang load xong
-        document.addEventListener('DOMContentLoaded', function() {
-            // Kiểm tra nếu là điện thoại
-            if (window.innerWidth <= 768) {
-                console.log('📱 Mobile detected, showing virtual keys');
-            }
-        });
-    </script>
 </body>
 </html>
