@@ -4,125 +4,449 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Đăng nhập - Web Terminal</title>
-    <link rel="stylesheet" href="style.css">
+    
+    <!-- Cache control -->
+    <meta http-equiv="Cache-Control" content="no-cache, no-store, must-revalidate">
+    <meta http-equiv="Pragma" content="no-cache">
+    <meta http-equiv="Expires" content="0">
+    
     <style>
-        .auth-container {
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+        
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Oxygen, Ubuntu, sans-serif;
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            min-height: 100vh;
             display: flex;
             justify-content: center;
             align-items: center;
-            min-height: 100vh;
-            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            margin: 0;
+            padding: 20px;
         }
+        
+        .auth-container {
+            width: 100%;
+            max-width: 400px;
+        }
+        
         .auth-box {
             background: white;
             padding: 40px;
             border-radius: 10px;
             box-shadow: 0 10px 25px rgba(0,0,0,0.1);
-            width: 100%;
-            max-width: 400px;
         }
-        .auth-box h2 {
+        
+        .terminal-icon {
             text-align: center;
-            margin-bottom: 30px;
-            color: #333;
+            margin-bottom: 20px;
         }
+        
+        .terminal-icon .icon {
+            font-size: 48px;
+            color: #333;
+            background: #f0f0f0;
+            width: 80px;
+            height: 80px;
+            line-height: 80px;
+            border-radius: 50%;
+            margin: 0 auto;
+            box-shadow: 0 5px 15px rgba(0,0,0,0.1);
+        }
+        
+        h1 {
+            text-align: center;
+            color: #333;
+            margin-bottom: 10px;
+            font-size: 28px;
+        }
+        
+        .subtitle {
+            text-align: center;
+            color: #666;
+            margin-bottom: 30px;
+            font-size: 14px;
+        }
+        
         .form-group {
             margin-bottom: 20px;
         }
+        
         .form-group label {
             display: block;
-            margin-bottom: 5px;
+            margin-bottom: 8px;
             color: #555;
             font-weight: 500;
+            font-size: 14px;
         }
+        
         .form-group input {
             width: 100%;
-            padding: 10px;
-            border: 1px solid #ddd;
-            border-radius: 5px;
+            padding: 12px 15px;
+            border: 2px solid #e0e0e0;
+            border-radius: 8px;
             font-size: 16px;
-            transition: border-color 0.3s;
-        }
-        .form-group input:focus {
+            transition: all 0.3s ease;
             outline: none;
-            border-color: #667eea;
         }
+        
+        .form-group input:focus {
+            border-color: #667eea;
+            box-shadow: 0 0 0 3px rgba(102, 126, 234, 0.1);
+        }
+        
+        .form-group input.error {
+            border-color: #e74c3c;
+        }
+        
         .btn {
             width: 100%;
-            padding: 12px;
+            padding: 14px;
             background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
             color: white;
             border: none;
-            border-radius: 5px;
+            border-radius: 8px;
             font-size: 16px;
             font-weight: 600;
             cursor: pointer;
-            transition: opacity 0.3s;
+            transition: all 0.3s ease;
+            margin-top: 10px;
         }
+        
         .btn:hover {
-            opacity: 0.9;
+            transform: translateY(-2px);
+            box-shadow: 0 5px 15px rgba(102, 126, 234, 0.4);
         }
+        
+        .btn:disabled {
+            opacity: 0.6;
+            cursor: not-allowed;
+            transform: none;
+        }
+        
         .auth-links {
             text-align: center;
-            margin-top: 20px;
+            margin-top: 25px;
         }
+        
         .auth-links a {
             color: #667eea;
             text-decoration: none;
+            font-size: 14px;
+            font-weight: 500;
+            transition: color 0.3s;
         }
+        
         .auth-links a:hover {
+            color: #764ba2;
             text-decoration: underline;
         }
-        .error-message {
-            color: #e74c3c;
+        
+        .message {
+            margin-top: 20px;
+            padding: 12px;
+            border-radius: 8px;
             text-align: center;
-            margin-top: 10px;
+            font-size: 14px;
+            display: none;
+        }
+        
+        .message.error {
+            display: block;
+            background: #fde8e8;
+            color: #e74c3c;
+            border: 1px solid #fad1d1;
+        }
+        
+        .message.success {
+            display: block;
+            background: #e8f5e9;
+            color: #27ae60;
+            border: 1px solid #c8e6c9;
+        }
+        
+        .message.info {
+            display: block;
+            background: #e3f2fd;
+            color: #1976d2;
+            border: 1px solid #bbdefb;
+        }
+        
+        .loading-spinner {
+            display: inline-block;
+            width: 16px;
+            height: 16px;
+            border: 2px solid #ffffff;
+            border-radius: 50%;
+            border-top-color: transparent;
+            animation: spin 1s linear infinite;
+            margin-right: 8px;
+            vertical-align: middle;
+        }
+        
+        @keyframes spin {
+            to { transform: rotate(360deg); }
+        }
+        
+        .footer {
+            text-align: center;
+            margin-top: 20px;
+            color: rgba(255,255,255,0.8);
+            font-size: 12px;
+        }
+        
+        .footer a {
+            color: white;
+            text-decoration: none;
+        }
+        
+        .footer a:hover {
+            text-decoration: underline;
+        }
+        
+        .password-toggle {
+            position: relative;
+        }
+        
+        .password-toggle .toggle-btn {
+            position: absolute;
+            right: 15px;
+            top: 50%;
+            transform: translateY(-50%);
+            background: none;
+            border: none;
+            cursor: pointer;
+            color: #999;
             font-size: 14px;
         }
-        .terminal-preview {
-            text-align: center;
-            margin-bottom: 30px;
-            color: #666;
+        
+        .password-toggle .toggle-btn:hover {
+            color: #667eea;
         }
-        .terminal-preview i {
-            font-size: 48px;
-            color: #333;
+        
+        @media (max-width: 480px) {
+            .auth-box {
+                padding: 30px 20px;
+            }
+            
+            h1 {
+                font-size: 24px;
+            }
+            
+            .terminal-icon .icon {
+                width: 60px;
+                height: 60px;
+                line-height: 60px;
+                font-size: 36px;
+            }
         }
     </style>
 </head>
 <body>
     <div class="auth-container">
         <div class="auth-box">
-            <div class="terminal-preview">
-                <i>⚡</i>
-                <h1>Web Terminal</h1>
-                <p>Đăng nhập để truy cập môi trường Linux trên trình duyệt</p>
+            <div class="terminal-icon">
+                <div class="icon">⚡</div>
             </div>
             
-            <form id="loginForm">
+            <h1>Web Terminal</h1>
+            <div class="subtitle">Đăng nhập để truy cập môi trường Linux trên trình duyệt</div>
+            
+            <form id="loginForm" autocomplete="off">
                 <div class="form-group">
                     <label for="username">Tên đăng nhập</label>
-                    <input type="text" id="username" name="username" required 
-                           placeholder="Nhập tên đăng nhập" autocomplete="username">
+                    <input 
+                        type="text" 
+                        id="username" 
+                        name="username" 
+                        required 
+                        placeholder="Nhập tên đăng nhập"
+                        autocomplete="off"
+                        spellcheck="false"
+                    >
                 </div>
                 
                 <div class="form-group">
                     <label for="password">Mật khẩu</label>
-                    <input type="password" id="password" name="password" required 
-                           placeholder="Nhập mật khẩu" autocomplete="current-password">
+                    <div class="password-toggle">
+                        <input 
+                            type="password" 
+                            id="password" 
+                            name="password" 
+                            required 
+                            placeholder="Nhập mật khẩu"
+                            autocomplete="off"
+                        >
+                        <button type="button" class="toggle-btn" onclick="togglePassword()">👁️</button>
+                    </div>
                 </div>
                 
-                <button type="submit" class="btn">Đăng nhập</button>
+                <button type="submit" class="btn" id="loginBtn">
+                    <span class="btn-text">Đăng nhập</span>
+                </button>
                 
                 <div class="auth-links">
                     <a href="register.html">Chưa có tài khoản? Đăng ký ngay</a>
                 </div>
                 
-                <div id="errorMessage" class="error-message"></div>
+                <div id="message" class="message"></div>
             </form>
+        </div>
+        
+        <div class="footer">
+            <p>© 2026 Web Terminal - <a href="/">Trang chủ</a></p>
         </div>
     </div>
     
-    <script src="auth.js"></script>
+    <script>
+        // Kiểm tra session khi load trang
+        document.addEventListener('DOMContentLoaded', function() {
+            checkSession();
+            setupLoginForm();
+        });
+        
+        // Kiểm tra session
+        async function checkSession() {
+            try {
+                const response = await fetch('/api/session');
+                const data = await response.json();
+                
+                if (data.authenticated) {
+                    console.log('✅ Đã đăng nhập, chuyển hướng...');
+                    window.location.href = '/';
+                }
+            } catch (err) {
+                console.error('❌ Lỗi kiểm tra session:', err);
+            }
+        }
+        
+        // Thiết lập form đăng nhập
+        function setupLoginForm() {
+            const loginForm = document.getElementById('loginForm');
+            const usernameInput = document.getElementById('username');
+            const passwordInput = document.getElementById('password');
+            const loginBtn = document.getElementById('loginBtn');
+            const messageDiv = document.getElementById('message');
+            
+            // Xóa thông báo cũ khi focus vào input
+            usernameInput.addEventListener('focus', () => {
+                messageDiv.className = 'message';
+                messageDiv.textContent = '';
+                usernameInput.classList.remove('error');
+            });
+            
+            passwordInput.addEventListener('focus', () => {
+                messageDiv.className = 'message';
+                messageDiv.textContent = '';
+                passwordInput.classList.remove('error');
+            });
+            
+            loginForm.addEventListener('submit', async (e) => {
+                e.preventDefault();
+                
+                const username = usernameInput.value.trim();
+                const password = passwordInput.value.trim();
+                
+                // Validate
+                if (!username) {
+                    showMessage('Vui lòng nhập tên đăng nhập', 'error');
+                    usernameInput.classList.add('error');
+                    usernameInput.focus();
+                    return;
+                }
+                
+                if (!password) {
+                    showMessage('Vui lòng nhập mật khẩu', 'error');
+                    passwordInput.classList.add('error');
+                    passwordInput.focus();
+                    return;
+                }
+                
+                // Disable form
+                loginBtn.disabled = true;
+                loginBtn.innerHTML = '<span class="loading-spinner"></span> Đang xử lý...';
+                
+                try {
+                    console.log('📤 Gửi request đăng nhập...');
+                    
+                    const response = await fetch('/api/login', {
+                        method: 'POST',
+                        headers: {
+                            'Content-Type': 'application/json'
+                        },
+                        body: JSON.stringify({ username, password })
+                    });
+                    
+                    const data = await response.json();
+                    
+                    if (data.success) {
+                        console.log('✅ Đăng nhập thành công');
+                        showMessage('Đăng nhập thành công! Đang chuyển hướng...', 'success');
+                        
+                        // Chuyển hướng sau 1 giây
+                        setTimeout(() => {
+                            window.location.href = '/';
+                        }, 1000);
+                    } else {
+                        console.log('❌ Đăng nhập thất bại:', data.error);
+                        showMessage(data.error || 'Sai tên đăng nhập hoặc mật khẩu', 'error');
+                        
+                        // Enable form
+                        loginBtn.disabled = false;
+                        loginBtn.innerHTML = '<span class="btn-text">Đăng nhập</span>';
+                        
+                        // Highlight input
+                        usernameInput.classList.add('error');
+                        passwordInput.classList.add('error');
+                    }
+                    
+                } catch (err) {
+                    console.error('❌ Lỗi kết nối:', err);
+                    showMessage('Không thể kết nối đến server. Vui lòng thử lại sau.', 'error');
+                    
+                    // Enable form
+                    loginBtn.disabled = false;
+                    loginBtn.innerHTML = '<span class="btn-text">Đăng nhập</span>';
+                }
+            });
+        }
+        
+        // Hiển thị thông báo
+        function showMessage(text, type) {
+            const messageDiv = document.getElementById('message');
+            messageDiv.className = `message ${type}`;
+            messageDiv.textContent = text;
+        }
+        
+        // Toggle hiển thị mật khẩu
+        function togglePassword() {
+            const passwordInput = document.getElementById('password');
+            const toggleBtn = document.querySelector('.toggle-btn');
+            
+            if (passwordInput.type === 'password') {
+                passwordInput.type = 'text';
+                toggleBtn.textContent = '🔒';
+            } else {
+                passwordInput.type = 'password';
+                toggleBtn.textContent = '👁️';
+            }
+        }
+        
+        // Xử lý Enter key
+        document.addEventListener('keypress', function(e) {
+            if (e.key === 'Enter' && e.target.tagName !== 'BUTTON') {
+                e.preventDefault();
+                document.getElementById('loginBtn').click();
+            }
+        });
+        
+        // Auto focus vào username input
+        setTimeout(() => {
+            document.getElementById('username').focus();
+        }, 100);
+    </script>
 </body>
 </html>
