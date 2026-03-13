@@ -1,0 +1,14 @@
+services:
+  - type: web
+    name: web-terminal
+    env: docker
+    plan: free
+    region: singapore
+    dockerfilePath: ./Dockerfile
+    envVars:
+      - key: NODE_ENV
+        value: production
+    disk:
+      name: data
+      mountPath: /app/data
+      sizeGB: 1
