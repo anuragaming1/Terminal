@@ -217,6 +217,21 @@ app.get('/api/ws-status', (req, res) => {
     });
 });
 
+// API để lấy logs của user
+app.get('/api/logs', requireAuth, (req, res) => {
+    const username = req.session.userId;
+    const userLogs = [];
+    
+    // Tìm logs trong sessionStore
+    for (const [token, session] of sessionStore.entries()) {
+        if (session.username === username) {
+            userLogs.push(...(session.logs || []));
+        }
+    }
+    
+    res.json({ logs: userLogs.slice(-200) }); // Trả về 200 logs gần nhất
+});
+
 // QUAN TRỌNG: Xử lý upgrade request đúng cách
 server.on('upgrade', function upgrade(request, socket, head) {
     console.log('📡 WebSocket upgrade request received');
@@ -247,7 +262,7 @@ wss.on('connection', (ws, req) => {
     let pingInterval = null;
     let isAlive = true;
     
-    // Ping để giữ kết nối
+    // Ping để giữ kết nối (30 giây)
     pingInterval = setInterval(() => {
         if (!isAlive) {
             console.log('💀 Client không phản hồi, đóng kết nối');
@@ -309,6 +324,22 @@ wss.on('connection', (ws, req) => {
                         createdAt: new Date()
                     });
                     console.log(`✨ New session created for ${currentUser}`);
+                }
+                return;
+            }
+            
+            // Xử lý sync logs
+            if (data.type === 'sync_logs') {
+                if (sessionToken && sessionStore.has(sessionToken)) {
+                    const session = sessionStore.get(sessionToken);
+                    session.logs = data.logs;
+                    session.lastSync = new Date();
+                    console.log(`📋 Synced ${data.logs.length} logs for ${currentUser}`);
+                    
+                    // Xác nhận đã sync
+                    ws.send(JSON.stringify({
+                        type: 'synced'
+                    }));
                 }
                 return;
             }
@@ -420,7 +451,7 @@ wss.on('connection', (ws, req) => {
         console.log(`🔌 WebSocket closed: ${code} ${reason.toString()}`);
         clearInterval(pingInterval);
         
-        // Không xóa PTY ngay, giữ vài phút để có thể reconnect
+        // Không xóa PTY ngay, giữ 5 phút để có thể reconnect
         if (currentUser) {
             console.log(`👤 User ${currentUser} disconnected, keeping PTYs for 5 minutes`);
             
@@ -439,6 +470,21 @@ wss.on('connection', (ws, req) => {
             }, 5 * 60 * 1000); // 5 phút
         }
     });
+});
+
+// Thêm route để clear logs cũ (có thể gọi định kỳ)
+app.post('/api/clear-old-logs', requireAuth, (req, res) => {
+    const username = req.session.userId;
+    const oneDayAgo = Date.now() - 24 * 60 * 60 * 1000;
+    
+    for (const [token, session] of sessionStore.entries()) {
+        if (session.username === username && session.logs) {
+            // Giữ logs trong 24h
+            session.logs = session.logs.filter(log => log.timestamp > oneDayAgo);
+        }
+    }
+    
+    res.json({ success: true });
 });
 
 const PORT = process.env.PORT || 3000;
@@ -465,4 +511,13 @@ process.on('SIGTERM', () => {
         console.log('Server closed');
         process.exit(0);
     });
+});
+
+// Xử lý uncaught exceptions
+process.on('uncaughtException', (err) => {
+    console.error('Uncaught Exception:', err);
+});
+
+process.on('unhandledRejection', (reason, promise) => {
+    console.error('Unhandled Rejection at:', promise, 'reason:', reason);
 });
