@@ -4,18 +4,21 @@ let activeSessionId = null;
 let currentUsername = null;
 let ws = null;
 let reconnectAttempts = 0;
+let reconnectTimeout = null;
 let sessionToken = null;
 
 // Log system - LƯU VĨNH VIỄN
 let logData = [];
 
-// Load logs từ localStorage khi khởi động
+// Load logs từ localStorage khi khởi động - QUAN TRỌNG
 try {
-    const savedLogs = localStorage.getItem('terminalLogs_v2');
+    const savedLogs = localStorage.getItem('terminal_logs_' + window.location.host);
     if (savedLogs) {
         logData = JSON.parse(savedLogs);
+        console.log('📋 Loaded', logData.length, 'logs from localStorage');
     } else {
-        const oldLogs = localStorage.getItem('terminalLogs');
+        // Thử load log cũ
+        const oldLogs = localStorage.getItem('terminalLogs_v2');
         if (oldLogs) {
             logData = JSON.parse(oldLogs);
         }
@@ -24,11 +27,11 @@ try {
     console.log('No saved logs');
 }
 
-// Tạo session token khi load trang
-sessionToken = localStorage.getItem('sessionToken');
+// Tạo session token cố định
+sessionToken = localStorage.getItem('session_token');
 if (!sessionToken) {
     sessionToken = 'session_' + Date.now() + '_' + Math.random().toString(36).substring(7);
-    localStorage.setItem('sessionToken', sessionToken);
+    localStorage.setItem('session_token', sessionToken);
 }
 
 document.addEventListener('DOMContentLoaded', async function() {
@@ -40,7 +43,7 @@ document.addEventListener('DOMContentLoaded', async function() {
     document.getElementById('userSection').style.display = 'flex';
     document.getElementById('terminalWrapper').style.display = 'block';
     
-    // Setup virtual keys TRƯỚC
+    // Setup virtual keys
     setupVirtualKeys();
     
     // Kiểm tra session
@@ -65,7 +68,7 @@ document.addEventListener('DOMContentLoaded', async function() {
         // Logout handler
         document.getElementById('logout-btn').onclick = async () => {
             await fetch('/api/logout', { method: 'POST' });
-            localStorage.removeItem('sessionToken');
+            localStorage.removeItem('session_token');
             window.location.href = '/login.html';
         };
         
@@ -89,35 +92,59 @@ document.addEventListener('DOMContentLoaded', async function() {
     }
 });
 
-// Kết nối WebSocket với auto-reconnect
+// Kết nối WebSocket với auto-reconnect và retry vô hạn
 function connectWebSocket() {
     const protocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
     const wsUrl = `${protocol}//${window.location.host}`;
     
     function connect() {
+        // Clear timeout cũ
+        if (reconnectTimeout) {
+            clearTimeout(reconnectTimeout);
+            reconnectTimeout = null;
+        }
+        
         ws = new WebSocket(wsUrl);
+        
+        // Set timeout cho connection
+        const connectionTimeout = setTimeout(() => {
+            console.log('⏰ Connection timeout');
+            if (ws) {
+                ws.close();
+                ws = null;
+            }
+        }, 15000);
         
         ws.onopen = () => {
             console.log('✅ WebSocket connected');
+            clearTimeout(connectionTimeout);
             reconnectAttempts = 0;
             addLog('🟢 Đã kết nối lại server');
             
-            // Gửi session token để server nhận diện
+            // Gửi session token
             ws.send(JSON.stringify({
                 type: 'init',
                 username: currentUsername,
                 sessionToken: sessionToken
             }));
             
+            // Gửi logs hiện tại lên server để đồng bộ
+            ws.send(JSON.stringify({
+                type: 'sync_logs',
+                logs: logData
+            }));
+            
             // Auth tất cả sessions
             sessions.forEach((session, id) => {
-                ws.send(JSON.stringify({
-                    type: 'auth',
-                    username: currentUsername,
-                    sessionId: id,
-                    cols: session.term.cols,
-                    rows: session.term.rows
-                }));
+                if (ws.readyState === WebSocket.OPEN) {
+                    ws.send(JSON.stringify({
+                        type: 'auth',
+                        username: currentUsername,
+                        sessionId: id,
+                        cols: session.term.cols,
+                        rows: session.term.rows
+                    }));
+                }
             });
         };
         
@@ -125,21 +152,30 @@ function connectWebSocket() {
             try {
                 const data = JSON.parse(event.data);
                 
-                if (data.type === 'pong') return;
+                if (data.type === 'pong') {
+                    return;
+                }
                 
                 if (data.type === 'log') {
                     addLog(data.message);
                 } 
                 else if (data.type === 'restore') {
-                    if (data.logs) {
+                    if (data.logs && data.logs.length > 0) {
                         logData = data.logs;
                         displayLogs();
+                        // Lưu vào localStorage
+                        saveLogs();
+                        addLog('📋 Đã khôi phục logs từ server');
                     }
+                }
+                else if (data.type === 'synced') {
+                    console.log('📋 Logs synced with server');
                 }
                 else if (data.sessionId && sessions.has(data.sessionId)) {
                     sessions.get(data.sessionId).term.write(data.data);
                 }
             } catch (e) {
+                // Data thường
                 const activeSession = sessions.get(activeSessionId);
                 if (activeSession) {
                     activeSession.term.write(event.data);
@@ -147,14 +183,16 @@ function connectWebSocket() {
             }
         };
         
-        ws.onclose = () => {
-            console.log('🔌 WebSocket closed');
+        ws.onclose = (event) => {
+            console.log('🔌 WebSocket closed:', event.code);
+            clearTimeout(connectionTimeout);
+            
             reconnectAttempts++;
+            const delay = Math.min(1000 * reconnectAttempts, 30000);
             
-            const delay = Math.min(1000 * reconnectAttempts, 10000);
-            addLog(`🔴 Mất kết nối, thử lại sau ${delay/1000}s...`);
+            addLog(`🔴 Mất kết nối, thử lại sau ${Math.round(delay/1000)}s...`);
             
-            setTimeout(connect, delay);
+            reconnectTimeout = setTimeout(connect, delay);
         };
         
         ws.onerror = (error) => {
@@ -167,7 +205,7 @@ function connectWebSocket() {
 
 // Tạo session mới
 function createNewSession() {
-    const sessionId = 'session_' + Date.now() + '_' + Math.random().toString(36).substring(7);
+    const sessionId = 'term_' + Date.now() + '_' + Math.random().toString(36).substring(7);
     
     const wrapper = document.getElementById('terminalWrapper');
     const termDiv = document.createElement('div');
@@ -184,7 +222,8 @@ function createNewSession() {
         },
         fontFamily: 'Menlo, Monaco, "Courier New", monospace',
         fontSize: 14,
-        scrollback: 10000
+        scrollback: 10000,
+        allowTransparency: true
     });
     
     const fitAddon = new FitAddon.FitAddon();
@@ -282,17 +321,17 @@ function closeSession(sessionId) {
         const nextSession = sessions.keys().next().value;
         if (nextSession) activateSession(nextSession);
         
-        addLog(`📪 Đã đóng terminal ${sessionId.substring(0,8)}...`);
+        addLog(`📪 Đã đóng terminal`);
     }
 }
 
 // Thêm tab mới
 document.getElementById('addTabBtn').onclick = () => {
-    const newId = createNewSession();
+    createNewSession();
     addLog(`📫 Mở terminal mới`);
 };
 
-// Setup nút ảo
+// Setup nút ảo - FIXED
 function setupVirtualKeys() {
     const container = document.getElementById('virtualKeys');
     
@@ -302,7 +341,8 @@ function setupVirtualKeys() {
         ['⬆️', '⬇️', '⬅️', '➡️'],
         ['📋 PM2 list', '📊 PM2 logs', '🐍 Python', '🟢 Node'],
         ['📦 pip install', '📦 npm install', '⏹️ Stop all', '🔄 Restart all'],
-        ['📝 nano', '💾 save', '🚪 exit', '🔍 clear']
+        ['📝 nano', '💾 Lưu', '🚪 Thoát', '🔍 Clear'],
+        ['💾 Lưu & Thoát', '❌ Không lưu']
     ];
     
     keys.forEach(row => {
@@ -316,40 +356,84 @@ function setupVirtualKeys() {
             
             btn.onclick = () => {
                 const activeSession = sessions.get(activeSessionId);
-                if (!activeSession || !ws || ws.readyState !== WebSocket.OPEN) return;
+                if (!activeSession || !ws || ws.readyState !== WebSocket.OPEN) {
+                    alert('Chưa kết nối server!');
+                    return;
+                }
                 
+                // Xử lý các phím đặc biệt
                 switch(key) {
-                    case 'ESC': ws.send('\x1b'); break;
-                    case 'TAB': ws.send('\t'); break;
+                    // Phím điều khiển
+                    case 'ESC': sendKey('\x1b'); break;
+                    case 'TAB': sendKey('\t'); break;
                     case 'CTRL': 
-                        activeSession.term.write('\r\n🔧 CTRL mode - nhấn phím...\r\n');
+                        activeSession.term.write('\r\n🔧 Đang ở chế độ CTRL. Nhấn phím tiếp theo...\r\n');
                         break;
                     case 'ALT':
-                        activeSession.term.write('\r\n🔧 ALT mode - nhấn phím...\r\n');
+                        activeSession.term.write('\r\n🔧 Đang ở chế độ ALT. Nhấn phím tiếp theo...\r\n');
                         break;
-                    case '⬆️': ws.send('\x1b[A'); break;
-                    case '⬇️': ws.send('\x1b[B'); break;
-                    case '⬅️': ws.send('\x1b[D'); break;
-                    case '➡️': ws.send('\x1b[C'); break;
-                    case 'HOME': ws.send('\x1b[H'); break;
-                    case 'END': ws.send('\x1b[F'); break;
-                    case 'PGUP': ws.send('\x1b[5~'); break;
-                    case 'PGDN': ws.send('\x1b[6~'); break;
+                    
+                    // Phím di chuyển
+                    case '⬆️': sendKey('\x1b[A'); break;
+                    case '⬇️': sendKey('\x1b[B'); break;
+                    case '⬅️': sendKey('\x1b[D'); break;
+                    case '➡️': sendKey('\x1b[C'); break;
+                    case 'HOME': sendKey('\x1b[H'); break;
+                    case 'END': sendKey('\x1b[F'); break;
+                    case 'PGUP': sendKey('\x1b[5~'); break;
+                    case 'PGDN': sendKey('\x1b[6~'); break;
+                    
+                    // Lệnh PM2
                     case '📋 PM2 list': sendCommand('pm2 list'); break;
                     case '📊 PM2 logs': sendCommand('pm2 logs'); break;
                     case '⏹️ Stop all': sendCommand('pm2 stop all'); break;
                     case '🔄 Restart all': sendCommand('pm2 restart all'); break;
+                    
+                    // Lệnh dev
                     case '🐍 Python': sendCommand('python '); break;
                     case '🟢 Node': sendCommand('node '); break;
                     case '📦 pip install': sendCommand('pip install '); break;
                     case '📦 npm install': sendCommand('npm install'); break;
+                    
+                    // Lệnh nano - FIXED
                     case '📝 nano': sendCommand('nano '); break;
-                    case '💾 save': 
-                        ws.send('\x0F');
-                        setTimeout(() => ws.send('\r'), 100);
+                    case '💾 Lưu': 
+                        // Ctrl+O để lưu
+                        sendKey('\x0F');
+                        setTimeout(() => {
+                            // Enter để xác nhận tên file
+                            sendKey('\r');
+                            addLog('💾 Đã lưu file (Ctrl+O + Enter)');
+                        }, 100);
                         break;
-                    case '🚪 exit': ws.send('\x18'); break;
-                    case '🔍 clear': sendCommand('clear'); break;
+                    case '🚪 Thoát':
+                        // Ctrl+X để thoát
+                        sendKey('\x18');
+                        addLog('🚪 Đã thoát nano (Ctrl+X)');
+                        break;
+                    case '💾 Lưu & Thoát':
+                        // Ctrl+O để lưu
+                        sendKey('\x0F');
+                        setTimeout(() => {
+                            // Enter để xác nhận
+                            sendKey('\r');
+                            setTimeout(() => {
+                                // Ctrl+X để thoát
+                                sendKey('\x18');
+                                addLog('💾 Đã lưu và thoát');
+                            }, 200);
+                        }, 100);
+                        break;
+                    case '❌ Không lưu':
+                        // Ctrl+X để thoát
+                        sendKey('\x18');
+                        setTimeout(() => {
+                            // 'n' để không lưu
+                            sendKey('n');
+                            addLog('❌ Thoát không lưu');
+                        }, 100);
+                        break;
+                    case '🔍 Clear': sendCommand('clear'); break;
                 }
                 
                 addLog(`🔘 Đã nhấn: ${key}`);
@@ -362,43 +446,82 @@ function setupVirtualKeys() {
     });
 }
 
+// Helper gửi key
+function sendKey(key) {
+    const activeSession = sessions.get(activeSessionId);
+    if (!activeSession || !ws || ws.readyState !== WebSocket.OPEN) return;
+    
+    ws.send(JSON.stringify({
+        type: 'input',
+        sessionId: activeSessionId,
+        data: key
+    }));
+}
+
+// Helper gửi command
+function sendCommand(cmd) {
+    const activeSession = sessions.get(activeSessionId);
+    if (!activeSession || !ws || ws.readyState !== WebSocket.OPEN) return;
+    
+    // Gửi từng ký tự
+    for (let i = 0; i < cmd.length; i++) {
+        setTimeout(() => {
+            ws.send(JSON.stringify({
+                type: 'input',
+                sessionId: activeSessionId,
+                data: cmd[i]
+            }));
+        }, i * 10); // Delay nhỏ để tránh mất ký tự
+    }
+    
+    // Gửi Enter sau khi gõ xong
+    setTimeout(() => {
+        ws.send(JSON.stringify({
+            type: 'input',
+            sessionId: activeSessionId,
+            data: '\r'
+        }));
+    }, cmd.length * 10 + 50);
+    
+    addLog(`📤 Lệnh: ${cmd}`);
+}
+
 // Setup nút nano
 function setupNanoButtons() {
     document.getElementById('nanoSaveBtn').onclick = () => {
         if (ws && ws.readyState === WebSocket.OPEN) {
-            ws.send('\x0F');
-            setTimeout(() => ws.send('\r'), 100);
-            addLog('💾 Đã lưu file');
+            // Ctrl+O để lưu
+            sendKey('\x0F');
+            setTimeout(() => {
+                // Enter để xác nhận
+                sendKey('\r');
+                addLog('💾 Đã lưu file');
+            }, 100);
         }
     };
     
     document.getElementById('nanoExitBtn').onclick = () => {
         if (ws && ws.readyState === WebSocket.OPEN) {
-            ws.send('\x18');
+            // Ctrl+X để thoát
+            sendKey('\x18');
             addLog('🚪 Thoát nano');
         }
     };
     
     document.getElementById('nanoForceBtn').onclick = () => {
         if (ws && ws.readyState === WebSocket.OPEN) {
-            ws.send('\x18');
-            setTimeout(() => ws.send('n'), 100);
-            addLog('⚠️ Thoát không lưu');
+            // Ctrl+X để thoát
+            sendKey('\x18');
+            setTimeout(() => {
+                // 'n' để không lưu
+                sendKey('n');
+                addLog('⚠️ Thoát không lưu');
+            }, 100);
         }
     };
 }
 
-// Gửi lệnh
-function sendCommand(cmd) {
-    const activeSession = sessions.get(activeSessionId);
-    if (!activeSession || !ws || ws.readyState !== WebSocket.OPEN) return;
-    
-    cmd.split('').forEach(char => ws.send(char));
-    ws.send('\r');
-    addLog(`📤 Lệnh: ${cmd}`);
-}
-
-// Log system
+// Log system - FIXED: Luôn lưu
 function addLog(message) {
     const time = new Date().toLocaleTimeString('vi-VN', {
         hour: '2-digit',
@@ -412,29 +535,54 @@ function addLog(message) {
         timestamp: Date.now()
     });
     
-    if (logData.length > 200) {
-        logData = logData.slice(-200);
+    // Giữ 500 log gần nhất
+    if (logData.length > 500) {
+        logData = logData.slice(-500);
     }
     
-    try {
-        localStorage.setItem('terminalLogs_v2', JSON.stringify(logData));
-    } catch (e) {
-        if (e.name === 'QuotaExceededError') {
-            logData = logData.slice(-100);
-            localStorage.setItem('terminalLogs_v2', JSON.stringify(logData));
-        }
+    // Lưu vào localStorage NGAY LẬP TỨC
+    saveLogs();
+    
+    // Đồng bộ lên server nếu đang kết nối
+    if (ws && ws.readyState === WebSocket.OPEN) {
+        ws.send(JSON.stringify({
+            type: 'sync_logs',
+            logs: logData
+        }));
     }
     
     displayLogs();
 }
 
+// Lưu logs vào localStorage
+function saveLogs() {
+    try {
+        localStorage.setItem('terminal_logs_' + window.location.host, JSON.stringify(logData));
+        console.log('📋 Saved', logData.length, 'logs to localStorage');
+    } catch (e) {
+        console.warn('Cannot save logs:', e);
+        // Nếu đầy, xóa bớt
+        if (e.name === 'QuotaExceededError') {
+            logData = logData.slice(-100);
+            try {
+                localStorage.setItem('terminal_logs_' + window.location.host, JSON.stringify(logData));
+            } catch (e2) {}
+        }
+    }
+}
+
 // Hiển thị logs
 function displayLogs() {
     const logContent = document.getElementById('logContent');
+    if (!logContent) return;
+    
     logContent.innerHTML = logData.map(log => 
         `<div style="color: ${log.message.includes('🟢') ? '#00ff00' : 
                               log.message.includes('🔴') ? '#ff5555' : 
-                              log.message.includes('⚠️') ? '#ffaa00' : '#00ff00'}">
+                              log.message.includes('⚠️') ? '#ffaa00' : '#00ff00'};
+                    padding: 2px 0;
+                    border-bottom: 1px solid #333;
+                    font-size: 11px;">
             [${log.time}] ${log.message}
         </div>`
     ).join('');
@@ -448,22 +596,26 @@ function setupLogPanel() {
         document.getElementById('logPanel').style.display = 'none';
     };
     
+    // Ctrl+L để mở log
     document.addEventListener('keydown', (e) => {
         if (e.ctrlKey && e.key === 'l') {
             document.getElementById('logPanel').style.display = 'block';
             e.preventDefault();
         }
     });
+    
+    // Hiển thị log ngay lập tức
+    displayLogs();
 }
 
 // Show error
 function showError(message) {
     document.getElementById('terminalWrapper').innerHTML = `
-        <div style="color: red; padding: 30px; text-align: center;">
-            ❌ ${message}<br><br>
+        <div style="color: red; padding: 30px; text-align: center; font-family: monospace;">
+            <div style="font-size: 20px; margin-bottom: 20px;">❌ ${message}</div>
             <button onclick="window.location.reload()" 
-                style="padding: 10px 30px; background: #00ff00; border: none; border-radius: 5px; cursor: pointer;">
-                Tải lại
+                style="padding: 10px 30px; background: #00ff00; color: black; border: none; border-radius: 5px; cursor: pointer; font-size: 16px;">
+                Tải lại trang
             </button>
         </div>
     `;
@@ -476,7 +628,9 @@ window.addEventListener('resize', () => {
     });
 });
 
+// Save logs before unload
 window.addEventListener('beforeunload', () => {
+    saveLogs();
     if (ws) {
         ws.close();
     }
