@@ -6,22 +6,17 @@ let ws = null;
 let reconnectAttempts = 0;
 let reconnectTimeout = null;
 let sessionToken = null;
+let isInstalling = false;
 
 // Log system - LƯU VĨNH VIỄN
 let logData = [];
 
-// Load logs từ localStorage khi khởi động - QUAN TRỌNG
+// Load logs từ localStorage khi khởi động
 try {
     const savedLogs = localStorage.getItem('terminal_logs_' + window.location.host);
     if (savedLogs) {
         logData = JSON.parse(savedLogs);
         console.log('📋 Loaded', logData.length, 'logs from localStorage');
-    } else {
-        // Thử load log cũ
-        const oldLogs = localStorage.getItem('terminalLogs_v2');
-        if (oldLogs) {
-            logData = JSON.parse(oldLogs);
-        }
     }
 } catch (e) {
     console.log('No saved logs');
@@ -78,6 +73,7 @@ document.addEventListener('DOMContentLoaded', async function() {
         // Setup các handlers
         setupNanoButtons();
         setupLogPanel();
+        setupProgressBar();
         
         // Hiển thị logs cũ
         displayLogs();
@@ -92,13 +88,12 @@ document.addEventListener('DOMContentLoaded', async function() {
     }
 });
 
-// Kết nối WebSocket với auto-reconnect và retry vô hạn
+// Kết nối WebSocket
 function connectWebSocket() {
     const protocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
     const wsUrl = `${protocol}//${window.location.host}`;
     
     function connect() {
-        // Clear timeout cũ
         if (reconnectTimeout) {
             clearTimeout(reconnectTimeout);
             reconnectTimeout = null;
@@ -106,7 +101,6 @@ function connectWebSocket() {
         
         ws = new WebSocket(wsUrl);
         
-        // Set timeout cho connection
         const connectionTimeout = setTimeout(() => {
             console.log('⏰ Connection timeout');
             if (ws) {
@@ -121,20 +115,18 @@ function connectWebSocket() {
             reconnectAttempts = 0;
             addLog('🟢 Đã kết nối lại server');
             
-            // Gửi session token
             ws.send(JSON.stringify({
                 type: 'init',
                 username: currentUsername,
                 sessionToken: sessionToken
             }));
             
-            // Gửi logs hiện tại lên server để đồng bộ
+            // Gửi logs lên server để đồng bộ
             ws.send(JSON.stringify({
                 type: 'sync_logs',
                 logs: logData
             }));
             
-            // Auth tất cả sessions
             sessions.forEach((session, id) => {
                 if (ws.readyState === WebSocket.OPEN) {
                     ws.send(JSON.stringify({
@@ -152,18 +144,15 @@ function connectWebSocket() {
             try {
                 const data = JSON.parse(event.data);
                 
-                if (data.type === 'pong') {
-                    return;
-                }
+                if (data.type === 'pong') return;
                 
                 if (data.type === 'log') {
                     addLog(data.message);
                 } 
                 else if (data.type === 'restore') {
-                    if (data.logs && data.logs.length > 0) {
+                    if (data.logs && data.logs.length > logData.length) {
                         logData = data.logs;
                         displayLogs();
-                        // Lưu vào localStorage
                         saveLogs();
                         addLog('📋 Đã khôi phục logs từ server');
                     }
@@ -172,10 +161,19 @@ function connectWebSocket() {
                     console.log('📋 Logs synced with server');
                 }
                 else if (data.sessionId && sessions.has(data.sessionId)) {
+                    const output = event.data;
+                    // Kiểm tra nếu đang cài pip
+                    if (output.includes('Collecting') || output.includes('Installing') || output.includes('Downloading')) {
+                        showProgress(true);
+                        updateProgress(output);
+                    }
+                    if (output.includes('Successfully installed')) {
+                        showProgress(false);
+                        addLog('✅ Cài đặt hoàn tất!');
+                    }
                     sessions.get(data.sessionId).term.write(data.data);
                 }
             } catch (e) {
-                // Data thường
                 const activeSession = sessions.get(activeSessionId);
                 if (activeSession) {
                     activeSession.term.write(event.data);
@@ -331,7 +329,7 @@ document.getElementById('addTabBtn').onclick = () => {
     addLog(`📫 Mở terminal mới`);
 };
 
-// Setup nút ảo - FIXED
+// Setup nút ảo
 function setupVirtualKeys() {
     const container = document.getElementById('virtualKeys');
     
@@ -339,10 +337,10 @@ function setupVirtualKeys() {
         ['ESC', 'TAB', 'CTRL', 'ALT'],
         ['HOME', 'END', 'PGUP', 'PGDN'],
         ['⬆️', '⬇️', '⬅️', '➡️'],
-        ['📋 PM2 list', '📊 PM2 logs', '🐍 Python', '🟢 Node'],
+        ['📋 PM2 list', '📊 PM2 logs', '🐍 Python', '🟢 Node.js'],
         ['📦 pip install', '📦 npm install', '⏹️ Stop all', '🔄 Restart all'],
         ['📝 nano', '💾 Lưu', '🚪 Thoát', '🔍 Clear'],
-        ['💾 Lưu & Thoát', '❌ Không lưu']
+        ['💾 Lưu & Thoát', '❌ Không lưu', '🔄 pip status', '📜 pip list']
     ];
     
     keys.forEach(row => {
@@ -354,6 +352,10 @@ function setupVirtualKeys() {
             btn.className = 'virtual-key';
             btn.textContent = key;
             
+            if (key.includes('pip') && isInstalling) {
+                btn.classList.add('install');
+            }
+            
             btn.onclick = () => {
                 const activeSession = sessions.get(activeSessionId);
                 if (!activeSession || !ws || ws.readyState !== WebSocket.OPEN) {
@@ -361,7 +363,6 @@ function setupVirtualKeys() {
                     return;
                 }
                 
-                // Xử lý các phím đặc biệt
                 switch(key) {
                     // Phím điều khiển
                     case 'ESC': sendKey('\x1b'); break;
@@ -391,47 +392,49 @@ function setupVirtualKeys() {
                     
                     // Lệnh dev
                     case '🐍 Python': sendCommand('python '); break;
-                    case '🟢 Node': sendCommand('node '); break;
-                    case '📦 pip install': sendCommand('pip install '); break;
-                    case '📦 npm install': sendCommand('npm install'); break;
+                    case '🟢 Node.js': sendCommand('node '); break;
                     
-                    // Lệnh nano - FIXED
+                    // Lệnh pip - có progress bar
+                    case '📦 pip install':
+                        sendCommand('pip install ');
+                        showProgress(true);
+                        addLog('📦 Bắt đầu cài đặt package...');
+                        break;
+                    case '🔄 pip status':
+                        sendCommand('pip list');
+                        break;
+                    case '📜 pip list':
+                        sendCommand('pip list');
+                        break;
+                    
+                    // Lệnh npm
+                    case '📦 npm install':
+                        sendCommand('npm install');
+                        break;
+                    
+                    // Lệnh nano
                     case '📝 nano': sendCommand('nano '); break;
                     case '💾 Lưu': 
-                        // Ctrl+O để lưu
                         sendKey('\x0F');
-                        setTimeout(() => {
-                            // Enter để xác nhận tên file
-                            sendKey('\r');
-                            addLog('💾 Đã lưu file (Ctrl+O + Enter)');
-                        }, 100);
+                        setTimeout(() => sendKey('\r'), 100);
+                        addLog('💾 Đã lưu file');
                         break;
                     case '🚪 Thoát':
-                        // Ctrl+X để thoát
                         sendKey('\x18');
-                        addLog('🚪 Đã thoát nano (Ctrl+X)');
+                        addLog('🚪 Đã thoát nano');
                         break;
                     case '💾 Lưu & Thoát':
-                        // Ctrl+O để lưu
                         sendKey('\x0F');
                         setTimeout(() => {
-                            // Enter để xác nhận
                             sendKey('\r');
-                            setTimeout(() => {
-                                // Ctrl+X để thoát
-                                sendKey('\x18');
-                                addLog('💾 Đã lưu và thoát');
-                            }, 200);
+                            setTimeout(() => sendKey('\x18'), 200);
                         }, 100);
+                        addLog('💾 Đã lưu và thoát');
                         break;
                     case '❌ Không lưu':
-                        // Ctrl+X để thoát
                         sendKey('\x18');
-                        setTimeout(() => {
-                            // 'n' để không lưu
-                            sendKey('n');
-                            addLog('❌ Thoát không lưu');
-                        }, 100);
+                        setTimeout(() => sendKey('n'), 100);
+                        addLog('❌ Thoát không lưu');
                         break;
                     case '🔍 Clear': sendCommand('clear'); break;
                 }
@@ -446,7 +449,7 @@ function setupVirtualKeys() {
     });
 }
 
-// Helper gửi key
+// Gửi key
 function sendKey(key) {
     const activeSession = sessions.get(activeSessionId);
     if (!activeSession || !ws || ws.readyState !== WebSocket.OPEN) return;
@@ -458,12 +461,11 @@ function sendKey(key) {
     }));
 }
 
-// Helper gửi command
+// Gửi command
 function sendCommand(cmd) {
     const activeSession = sessions.get(activeSessionId);
     if (!activeSession || !ws || ws.readyState !== WebSocket.OPEN) return;
     
-    // Gửi từng ký tự
     for (let i = 0; i < cmd.length; i++) {
         setTimeout(() => {
             ws.send(JSON.stringify({
@@ -471,10 +473,9 @@ function sendCommand(cmd) {
                 sessionId: activeSessionId,
                 data: cmd[i]
             }));
-        }, i * 10); // Delay nhỏ để tránh mất ký tự
+        }, i * 10);
     }
     
-    // Gửi Enter sau khi gõ xong
     setTimeout(() => {
         ws.send(JSON.stringify({
             type: 'input',
@@ -490,19 +491,14 @@ function sendCommand(cmd) {
 function setupNanoButtons() {
     document.getElementById('nanoSaveBtn').onclick = () => {
         if (ws && ws.readyState === WebSocket.OPEN) {
-            // Ctrl+O để lưu
             sendKey('\x0F');
-            setTimeout(() => {
-                // Enter để xác nhận
-                sendKey('\r');
-                addLog('💾 Đã lưu file');
-            }, 100);
+            setTimeout(() => sendKey('\r'), 100);
+            addLog('💾 Đã lưu file');
         }
     };
     
     document.getElementById('nanoExitBtn').onclick = () => {
         if (ws && ws.readyState === WebSocket.OPEN) {
-            // Ctrl+X để thoát
             sendKey('\x18');
             addLog('🚪 Thoát nano');
         }
@@ -510,18 +506,59 @@ function setupNanoButtons() {
     
     document.getElementById('nanoForceBtn').onclick = () => {
         if (ws && ws.readyState === WebSocket.OPEN) {
-            // Ctrl+X để thoát
             sendKey('\x18');
-            setTimeout(() => {
-                // 'n' để không lưu
-                sendKey('n');
-                addLog('⚠️ Thoát không lưu');
-            }, 100);
+            setTimeout(() => sendKey('n'), 100);
+            addLog('⚠️ Thoát không lưu');
         }
     };
 }
 
-// Log system - FIXED: Luôn lưu
+// Setup progress bar
+function setupProgressBar() {
+    const progressBar = document.getElementById('progressBar');
+    const progressFill = document.getElementById('progressFill');
+    const progressText = document.getElementById('progressText');
+    const progressStatus = document.getElementById('progressStatus');
+}
+
+function showProgress(show) {
+    const progressBar = document.getElementById('progressBar');
+    if (show) {
+        progressBar.style.display = 'flex';
+        isInstalling = true;
+    } else {
+        progressBar.style.display = 'none';
+        isInstalling = false;
+        document.getElementById('progressFill').style.width = '0%';
+        document.getElementById('progressText').textContent = '0%';
+    }
+}
+
+function updateProgress(output) {
+    const progressFill = document.getElementById('progressFill');
+    const progressText = document.getElementById('progressText');
+    const progressStatus = document.getElementById('progressStatus');
+    
+    // Parse output để lấy % nếu có
+    const percentMatch = output.match(/(\d+)%/);
+    if (percentMatch) {
+        const percent = parseInt(percentMatch[1]);
+        progressFill.style.width = percent + '%';
+        progressText.textContent = percent + '%';
+    }
+    
+    // Cập nhật status
+    if (output.includes('Collecting')) {
+        progressStatus.textContent = '📦 Đang tải package...';
+    } else if (output.includes('Installing')) {
+        progressStatus.textContent = '⚙️ Đang cài đặt...';
+    } else if (output.includes('Successfully')) {
+        progressStatus.textContent = '✅ Hoàn tất!';
+        setTimeout(() => showProgress(false), 2000);
+    }
+}
+
+// Log system
 function addLog(message) {
     const time = new Date().toLocaleTimeString('vi-VN', {
         hour: '2-digit',
@@ -543,7 +580,7 @@ function addLog(message) {
     // Lưu vào localStorage NGAY LẬP TỨC
     saveLogs();
     
-    // Đồng bộ lên server nếu đang kết nối
+    // Đồng bộ lên server
     if (ws && ws.readyState === WebSocket.OPEN) {
         ws.send(JSON.stringify({
             type: 'sync_logs',
@@ -561,7 +598,6 @@ function saveLogs() {
         console.log('📋 Saved', logData.length, 'logs to localStorage');
     } catch (e) {
         console.warn('Cannot save logs:', e);
-        // Nếu đầy, xóa bớt
         if (e.name === 'QuotaExceededError') {
             logData = logData.slice(-100);
             try {
@@ -579,7 +615,8 @@ function displayLogs() {
     logContent.innerHTML = logData.map(log => 
         `<div style="color: ${log.message.includes('🟢') ? '#00ff00' : 
                               log.message.includes('🔴') ? '#ff5555' : 
-                              log.message.includes('⚠️') ? '#ffaa00' : '#00ff00'};
+                              log.message.includes('⚠️') ? '#ffaa00' : 
+                              log.message.includes('📦') ? '#00aaff' : '#00ff00'};
                     padding: 2px 0;
                     border-bottom: 1px solid #333;
                     font-size: 11px;">
@@ -596,7 +633,6 @@ function setupLogPanel() {
         document.getElementById('logPanel').style.display = 'none';
     };
     
-    // Ctrl+L để mở log
     document.addEventListener('keydown', (e) => {
         if (e.ctrlKey && e.key === 'l') {
             document.getElementById('logPanel').style.display = 'block';
@@ -604,7 +640,6 @@ function setupLogPanel() {
         }
     });
     
-    // Hiển thị log ngay lập tức
     displayLogs();
 }
 
@@ -635,3 +670,6 @@ window.addEventListener('beforeunload', () => {
         ws.close();
     }
 });
+
+// Auto-save logs mỗi 30 giây
+setInterval(saveLogs, 30000);
