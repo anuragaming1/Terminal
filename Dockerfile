@@ -1,5 +1,6 @@
 FROM node:18-bullseye
 
+# Cài đặt packages
 RUN apt-get update && apt-get install -y \
     python3 \
     python3-pip \
@@ -11,7 +12,6 @@ RUN apt-get update && apt-get install -y \
     && rm -rf /var/lib/apt/lists/*
 
 RUN ln -s /usr/bin/python3 /usr/bin/python
-
 RUN npm install -g pm2
 
 WORKDIR /app
@@ -21,8 +21,11 @@ RUN npm install
 
 COPY . .
 
-RUN mkdir -p /app/data && chmod 777 /app/data
+# Tạo thư mục data với quyền ghi
+RUN mkdir -p /app/data /app/workspaces && \
+    chmod -R 777 /app/data /app/workspaces
 
 EXPOSE 3000
 
+# Script chạy chính
 CMD ["node", "server.js"]
