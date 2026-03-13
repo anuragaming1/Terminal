@@ -19,13 +19,13 @@
             font-family: 'Segoe UI', monospace;
         }
         
-        /* Thanh tab */
+        /* Thanh tab - Cách xa logout */
         .tab-bar {
             position: fixed;
             top: 0;
             left: 0;
-            right: 0;
-            height: 45px;
+            right: 200px; /* Chừa chỗ cho user section */
+            height: 50px;
             background: #2d2d2d;
             display: flex;
             align-items: center;
@@ -49,6 +49,12 @@
             gap: 10px;
             border: 1px solid #555;
             border-bottom: none;
+            transition: all 0.2s;
+        }
+        
+        .tab:hover {
+            background: #4d4d4d;
+            color: #fff;
         }
         
         .tab.active {
@@ -63,6 +69,7 @@
             font-weight: bold;
             padding: 0 8px;
             border-radius: 3px;
+            font-size: 16px;
         }
         
         .tab .close:hover {
@@ -79,6 +86,7 @@
             cursor: pointer;
             border: none;
             font-weight: bold;
+            white-space: nowrap;
         }
         
         .add-tab:hover {
@@ -86,36 +94,44 @@
             color: black;
         }
         
-        /* User section */
+        /* User section - Cách xa bên phải */
         .user-section {
             position: fixed;
             top: 0;
-            right: 15px;
-            height: 45px;
+            right: 0;
+            width: 200px;
+            height: 50px;
+            background: #2d2d2d;
+            border-bottom: 2px solid #00ff00;
+            border-left: 2px solid #00ff00;
             display: flex;
             align-items: center;
-            gap: 15px;
+            justify-content: flex-end;
+            gap: 10px;
+            padding: 0 15px;
             z-index: 2100;
         }
         
         #user-info {
             background: #27ae60;
             color: white;
-            padding: 6px 15px;
+            padding: 6px 12px;
             border-radius: 4px;
-            font-size: 14px;
+            font-size: 13px;
             font-weight: bold;
+            white-space: nowrap;
         }
         
         #logout-btn {
             background: #e74c3c;
             color: white;
             border: none;
-            padding: 6px 15px;
+            padding: 6px 12px;
             border-radius: 4px;
-            font-size: 14px;
+            font-size: 13px;
             cursor: pointer;
             font-weight: bold;
+            white-space: nowrap;
         }
         
         #logout-btn:hover {
@@ -125,10 +141,10 @@
         /* Terminal container */
         .terminal-wrapper {
             position: fixed;
-            top: 45px;
+            top: 50px;
             left: 0;
             right: 0;
-            bottom: 280px;
+            bottom: 320px; /* Tăng lên để chừa chỗ cho progress bar */
             background: black;
         }
         
@@ -142,10 +158,54 @@
             display: block;
         }
         
-        /* Quick buttons cho nano - LUÔN HIỆN */
+        /* Progress bar cho pip install */
+        .progress-bar-container {
+            position: fixed;
+            bottom: 280px;
+            left: 0;
+            right: 0;
+            height: 40px;
+            background: #2d2d2d;
+            border-top: 2px solid #00ff00;
+            border-bottom: 2px solid #00ff00;
+            display: none;
+            align-items: center;
+            padding: 0 20px;
+            z-index: 1850;
+        }
+        
+        .progress-bar {
+            flex: 1;
+            height: 20px;
+            background: #333;
+            border-radius: 10px;
+            overflow: hidden;
+            margin: 0 10px;
+        }
+        
+        .progress-fill {
+            height: 100%;
+            background: linear-gradient(90deg, #00ff00, #00aa00);
+            width: 0%;
+            transition: width 0.3s;
+        }
+        
+        .progress-text {
+            color: #00ff00;
+            font-size: 12px;
+            min-width: 100px;
+            text-align: center;
+        }
+        
+        .progress-status {
+            color: #fff;
+            font-size: 12px;
+        }
+        
+        /* Quick buttons cho nano */
         .nano-buttons {
             position: fixed;
-            bottom: 240px;
+            bottom: 280px;
             left: 0;
             right: 0;
             background: #2d2d2d;
@@ -162,17 +222,19 @@
             background: #4d4d4d;
             color: white;
             border: 2px solid #00ff00;
-            padding: 12px 30px;
+            padding: 10px 25px;
             border-radius: 8px;
-            font-size: 16px;
+            font-size: 14px;
             font-weight: bold;
             cursor: pointer;
             min-width: 120px;
+            transition: all 0.2s;
         }
         
         .nano-btn:hover {
             background: #00ff00;
             color: black;
+            transform: scale(1.05);
         }
         
         .nano-btn.save {
@@ -187,7 +249,7 @@
             background: #aa0000;
         }
         
-        /* Virtual keys - LUÔN HIỆN */
+        /* Virtual keys */
         .virtual-keys {
             position: fixed;
             bottom: 0;
@@ -197,6 +259,8 @@
             border-top: 3px solid #00ff00;
             padding: 10px;
             z-index: 2000;
+            max-height: 280px;
+            overflow-y: auto;
         }
         
         .key-row {
@@ -213,19 +277,25 @@
             background: #333;
             border: 1px solid #00ff00;
             color: #00ff00;
-            padding: 12px 0;
+            padding: 10px 0;
             border-radius: 6px;
-            font-size: 14px;
+            font-size: 13px;
             font-weight: bold;
             text-align: center;
             flex: 1;
             cursor: pointer;
             transition: all 0.1s;
+            user-select: none;
         }
         
         .virtual-key:hover {
             background: #00ff00;
             color: black;
+            transform: scale(1.02);
+        }
+        
+        .virtual-key:active {
+            transform: scale(0.98);
         }
         
         .virtual-key.special {
@@ -236,13 +306,24 @@
             flex: 2;
         }
         
+        .virtual-key.install {
+            background: #004488;
+            animation: pulse 2s infinite;
+        }
+        
+        @keyframes pulse {
+            0% { opacity: 1; }
+            50% { opacity: 0.7; }
+            100% { opacity: 1; }
+        }
+        
         /* Log panel */
         .log-panel {
             position: fixed;
-            bottom: 240px;
+            bottom: 320px;
             right: 20px;
-            width: 350px;
-            height: 200px;
+            width: 400px;
+            height: 250px;
             background: rgba(0,0,0,0.95);
             border: 2px solid #00ff00;
             border-radius: 5px;
@@ -252,6 +333,7 @@
             overflow-y: auto;
             z-index: 1800;
             box-shadow: 0 0 20px rgba(0,255,0,0.3);
+            backdrop-filter: blur(5px);
         }
         
         .log-header {
@@ -261,11 +343,15 @@
             padding-bottom: 5px;
             border-bottom: 1px solid #00ff00;
             font-weight: bold;
+            position: sticky;
+            top: 0;
+            background: rgba(0,0,0,0.95);
         }
         
         #closeLogBtn {
             cursor: pointer;
             padding: 0 5px;
+            font-size: 16px;
         }
         
         #closeLogBtn:hover {
@@ -273,13 +359,14 @@
         }
         
         #logContent {
-            height: calc(100% - 30px);
+            height: calc(100% - 40px);
             overflow-y: auto;
         }
         
         #logContent div {
-            padding: 2px 0;
+            padding: 3px 0;
             border-bottom: 1px solid #333;
+            word-break: break-word;
         }
         
         /* Loading */
@@ -296,6 +383,22 @@
             border-radius: 10px;
             border: 2px solid #00ff00;
             font-size: 18px;
+            box-shadow: 0 0 30px rgba(0,255,0,0.3);
+        }
+        
+        .spinner {
+            display: inline-block;
+            width: 30px;
+            height: 30px;
+            border: 3px solid #00ff00;
+            border-radius: 50%;
+            border-top-color: transparent;
+            animation: spin 1s linear infinite;
+            margin-right: 10px;
+        }
+        
+        @keyframes spin {
+            to { transform: rotate(360deg); }
         }
         
         /* Scrollbar */
@@ -312,18 +415,76 @@
             background: #00ff00;
             border-radius: 5px;
         }
+        
+        ::-webkit-scrollbar-thumb:hover {
+            background: #00aa00;
+        }
+        
+        /* Tooltip */
+        [data-tooltip] {
+            position: relative;
+        }
+        
+        [data-tooltip]:before {
+            content: attr(data-tooltip);
+            position: absolute;
+            bottom: 100%;
+            left: 50%;
+            transform: translateX(-50%);
+            background: #00ff00;
+            color: black;
+            padding: 5px 10px;
+            border-radius: 5px;
+            font-size: 12px;
+            white-space: nowrap;
+            display: none;
+            z-index: 3000;
+        }
+        
+        [data-tooltip]:hover:before {
+            display: block;
+        }
+        
+        /* Mobile adjustments */
+        @media (max-width: 768px) {
+            .tab-bar {
+                right: 150px;
+            }
+            
+            .user-section {
+                width: 150px;
+            }
+            
+            .log-panel {
+                width: 90%;
+                right: 5%;
+                font-size: 11px;
+            }
+            
+            .virtual-key {
+                padding: 8px 0;
+                font-size: 11px;
+            }
+            
+            .nano-btn {
+                padding: 8px 15px;
+                font-size: 12px;
+                min-width: 80px;
+            }
+        }
     </style>
 </head>
 <body>
     <div id="loading">
+        <div class="spinner"></div>
         <div>⚡ WEB TERMINAL</div>
-        <div style="margin-top: 20px; color: #666;">Đang kết nối...</div>
+        <div style="margin-top: 20px; color: #666; font-size: 14px;">Đang kết nối...</div>
     </div>
     
     <!-- Thanh tab -->
     <div class="tab-bar" id="tabBar" style="display: none;">
         <div class="tabs-container" id="tabsContainer" style="display: flex; gap: 10px; flex: 1; overflow-x: auto;"></div>
-        <button class="add-tab" id="addTabBtn">➕ Tab mới</button>
+        <button class="add-tab" id="addTabBtn" data-tooltip="Thêm terminal mới">➕ Tab mới</button>
     </div>
     
     <!-- User section -->
@@ -332,23 +493,32 @@
     <!-- Terminal containers -->
     <div class="terminal-wrapper" id="terminalWrapper" style="display: none;"></div>
     
-    <!-- Nút nano - LUÔN HIỆN -->
+    <!-- Progress bar cho pip install -->
+    <div class="progress-bar-container" id="progressBar">
+        <span class="progress-status" id="progressStatus">📦 Đang cài đặt...</span>
+        <div class="progress-bar">
+            <div class="progress-fill" id="progressFill"></div>
+        </div>
+        <span class="progress-text" id="progressText">0%</span>
+    </div>
+    
+    <!-- Nút nano -->
     <div class="nano-buttons" id="nanoButtons">
-        <button class="nano-btn save" id="nanoSaveBtn">💾 Lưu (Ctrl+O)</button>
-        <button class="nano-btn exit" id="nanoExitBtn">🚪 Thoát (Ctrl+X)</button>
-        <button class="nano-btn force" id="nanoForceBtn">⚠️ Thoát không lưu</button>
+        <button class="nano-btn save" id="nanoSaveBtn" data-tooltip="Ctrl+O để lưu">💾 Lưu (Ctrl+O)</button>
+        <button class="nano-btn exit" id="nanoExitBtn" data-tooltip="Ctrl+X để thoát">🚪 Thoát (Ctrl+X)</button>
+        <button class="nano-btn force" id="nanoForceBtn" data-tooltip="Thoát không lưu">⚠️ Thoát không lưu</button>
     </div>
     
     <!-- Log panel -->
     <div class="log-panel" id="logPanel">
         <div class="log-header">
             <span>📋 LỊCH SỬ LỆNH</span>
-            <span id="closeLogBtn">✖</span>
+            <span id="closeLogBtn" data-tooltip="Đóng">✖</span>
         </div>
         <div id="logContent"></div>
     </div>
     
-    <!-- Virtual keys - LUÔN HIỆN -->
+    <!-- Virtual keys -->
     <div class="virtual-keys" id="virtualKeys"></div>
     
     <script src="https://cdn.jsdelivr.net/npm/xterm/lib/xterm.js"></script>
